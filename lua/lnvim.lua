@@ -103,12 +103,27 @@ end
 local ns_id = vim.api.nvim_create_namespace("Lnvim")
 
 function M.paste_contents()
-	return nil
+	local file_path = vim.fn.input({
+		completion = "file",
+	})
+
+	local file, err = io.open(file_path, "r")
+	if file then
+		local prompt_lines = { "```" .. file_path }
+		for line in file:lines() do
+			prompt_lines[#prompt_lines + 1] = line
+		end
+		prompt_lines[#prompt_lines + 1] = "```"
+		file:close()
+		vim.api.nvim_buf_set_lines(0, -1, -1, false, prompt_lines)
+	else
+		vim.api.nvim_err_writeln("cant open: " .. file_path)
+		vim.api.nvim_err_writeln(err or "err nil")
+	end
 end
 
 function M.paste_codeblock(buf)
 	local lines = M.editor.get_current_codeblock_contents(buf)
-	vim.print(lines)
 	M.editor.paste_to_mark(M.opts.mark, lines)
 end
 

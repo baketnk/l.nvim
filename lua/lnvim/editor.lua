@@ -41,7 +41,6 @@ function M.goto_next_codeblock(buf)
 	buf = buf or vim.api.nvim_get_current_buf()
 	local cursor = vim.api.nvim_win_get_cursor(0)
 	local cursor_row = cursor[1] - 1 -- Convert to 0-indexed
-	vim.print(cursor)
 	local extmarks = vim.api.nvim_buf_get_extmarks(buf, ns_id, cursor, -1, { details = true, limit = 2 })
 	local next_block = nil
 
