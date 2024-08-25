@@ -45,7 +45,6 @@ function M.goto_next_codeblock(buf)
 	local next_block = nil
 
 	if #extmarks > 0 then
-		vim.print(extmarks)
 		if cursor_row < extmarks[1][2] then
 			next_block = extmarks[1]
 		elseif #extmarks > 1 then
@@ -192,7 +191,11 @@ vim.api.nvim_set_hl(0, "CodeBlock", {
 })
 vim.api.nvim_set_hl(0, "CodeBlockActive", {
 	bg = vim.o.background == "dark" and "#3c3c3c" or "#dddddd",
-	fg = vim.o.background == "dark" and "#ffffff" or "#000000",
+	fg = vim.o.background == "dark" and "#ffffff" or "##000000",
+})
+vim.api.nvim_set_hl(0, "LLMStream", {
+	bg = vim.o.background == "dark" and "#111111" or "#eeeeee",
+	fg = vim.o.background == "dark" and "#bcbcbc" or "#454545",
 })
 
 return M

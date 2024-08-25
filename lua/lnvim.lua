@@ -14,9 +14,10 @@ function M.show_drawer()
 
 	local default_prompt_path = M.opts.default_prompt_path
 	if M.work_buffer == nil or not vim.api.nvim_buf_is_valid(M.work_buffer) then
-		M.work_buffer = vim.api.nvim_create_buf(true, false)
+		M.work_buffer = vim.api.nvim_create_buf(false, false)
 		vim.api.nvim_set_option_value("filetype", M.filetype_ext, { buf = M.work_buffer })
-		vim.api.nvim_buf_set_name(M.work_buffer, default_prompt_path .. "default." .. M.filetype_ext)
+
+		vim.api.nvim_buf_set_name(M.work_buffer, default_prompt_path .. os.date("!%Y-%m-%d_%H-%M-%S") .. M.filetype_ext)
 	end
 	if M.work_window == nil or not vim.api.nvim_win_is_valid(M.work_window) then
 		M.work_window = vim.api.nvim_open_win(M.work_buffer, true, {
@@ -103,22 +104,26 @@ end
 local ns_id = vim.api.nvim_create_namespace("Lnvim")
 
 function M.paste_contents()
-	local file_path = vim.fn.input({
-		completion = "file",
-	})
+	if not M.telescope then
+		local file_path = vim.fn.input({
+			completion = "file",
+		})
 
-	local file, err = io.open(file_path, "r")
-	if file then
-		local prompt_lines = { "```" .. file_path }
-		for line in file:lines() do
-			prompt_lines[#prompt_lines + 1] = line
+		local file, err = io.open(file_path, "r")
+		if file then
+			local prompt_lines = { "```" .. file_path }
+			for line in file:lines() do
+				prompt_lines[#prompt_lines + 1] = line
+			end
+			prompt_lines[#prompt_lines + 1] = "```"
+			file:close()
+			vim.api.nvim_buf_set_lines(0, -1, -1, false, prompt_lines)
+		else
+			vim.api.nvim_err_writeln("cant open: " .. file_path)
+			vim.api.nvim_err_writeln(err or "err nil")
 		end
-		prompt_lines[#prompt_lines + 1] = "```"
-		file:close()
-		vim.api.nvim_buf_set_lines(0, -1, -1, false, prompt_lines)
 	else
-		vim.api.nvim_err_writeln("cant open: " .. file_path)
-		vim.api.nvim_err_writeln(err or "err nil")
+		M.telescope.builtin.find_files({})
 	end
 end
 
