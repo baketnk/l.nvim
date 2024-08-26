@@ -24,6 +24,10 @@ To install l.nvim using lazy.nvim, add the following to your `lazy.nvim` configu
       -- your configuration options
     })
   end,
+  dependencies = {
+    "nvim-telescope/telescope.nvim",
+    "nvim-lua/plenary"
+  }
 }
 ```
 
@@ -83,4 +87,4 @@ Find the others. The real people are out there.
 
 ## Acknowledgements
 
-[yacineMTB](https://twitter.com/yacineMTB) for inspiring my own take on his [dingllm.nvim](https://github.com/yacineMTB/dingllm.nvim) plugin, inspiring me to try nvim again and actually get it to take, and generally encouraging the timeline into actually making stuff
+[yacineMTB](https://twitter.com/yacineMTB) for inspiring my own take on his [dingLlm.nvim](https://github.com/yacineMTB/dingllm.nvim) plugin, inspiring me to try nvim again and actually get it to take, and generally encouraging the timeline into actually making stuff
