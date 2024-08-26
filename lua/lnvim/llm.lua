@@ -177,6 +177,21 @@ end
 
 M.default_provider = M.providers_available[1] or nil
 
+function M.cycle_provider()
+	if M.default_provider == M.providers_available[#M.providers_available] then
+		M.default_provider = M.providers_available[1]
+		vim.notify("switched to " .. M.default_provider)
+		return
+	end
+	for i, p in ipairs(M.providers_available) do
+		if M.default_provider == p then
+			M.default_provider = M.providers_available[i + 1]
+			vim.notify("switched to " .. M.default_provider)
+			return
+		end
+	end
+end
+
 function M.chat()
 	return nil
 end

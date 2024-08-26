@@ -66,6 +66,7 @@ l.nvim provides the following keymappings:
 - `<Leader>;j`: Go to the next codeblock
 - `<Leader>;k`: Go to the previous codeblock
 - `<Leader>;;`: open the LLM drawer, or run the LLM if the drawer is focused. 
+- <Leader>;m: cycle through available providers (Anthropic, OpenAI-like)
 
 ## License
 

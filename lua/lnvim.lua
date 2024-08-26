@@ -323,6 +323,7 @@ function M.setup(_opts)
 	make_plugKey(plugin_name .. "Next", "n", "j", M.next_magic, {})
 	make_plugKey(plugin_name .. "Prev", "n", "k", M.previous_magic, {})
 	make_plugKey(plugin_name .. "Magic", "n", ";", M.decide_with_magic, {})
+	make_plugKey(plugin_name .. "CycleProvider", "n", "m", M.LLM.cycle_provider, {})
 	-- make_plugKey(plugin_name .. "SendCodeToPlace", "n", "p", M.paste_codeblock, {})
 	if opts.open_drawer_on_setup then
 		M.show_drawer()
