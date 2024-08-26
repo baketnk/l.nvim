@@ -1,8 +1,8 @@
-# lnvim - Neovim Plugin for AI-Assisted Coding
+# l.nvim - Neovim Plugin for AI-Assisted Coding
 
 ![image](https://repository-images.githubusercontent.com/847120613/b73bed30-4aa2-4fbf-9ffc-9c870915cb38)
 
-lnvim is a Neovim plugin that integrates AI-assisted coding functionality into your Neovim workflow. It provides features like chat-based code generation, codeblock navigation, and seamless integration with your existing Neovim setup.
+l.nvim is a Neovim plugin that integrates AI-assisted coding functionality into your Neovim workflow. It provides features like chat-based code generation, codeblock navigation, and seamless integration with your existing Neovim setup.
 
 ## Features
 
@@ -14,11 +14,11 @@ lnvim is a Neovim plugin that integrates AI-assisted coding functionality into y
 
 ## Installation
 
-To install lnvim using lazy.nvim, add the following to your `lazy.nvim` configuration:
+To install l.nvim using lazy.nvim, add the following to your `lazy.nvim` configuration:
 
 ```lua
 {
-  "yourusername/lnvim",
+  "baketnk/l.nvim",
   config = function()
     require("lnvim").setup({
       -- your configuration options
@@ -29,7 +29,7 @@ To install lnvim using lazy.nvim, add the following to your `lazy.nvim` configur
 
 ## Configuration
 
-lnvim provides a `setup` function to customize the plugin behavior. Here are the available options:
+l.nvim provides a `setup` function to customize the plugin behavior. Here are the available options:
 
 - `default_prompt_path` (string): The default path to load prompts from (default: `os.getenv("HOME") .. "/.local/share/lnvim/"`).
 - `keymap_prefix` (string): The prefix for lnvim keymaps (default: `<Leader>;;`).
@@ -37,10 +37,12 @@ lnvim provides a `setup` function to customize the plugin behavior. Here are the
 - `use_openai_compat` (boolean): Whether to use OpenAI compatibility mode (default: `nil`).
 - `api_key_name` (string): The name of the environment variable containing the API key (required if `use_openai_compat` is `true`).
 
+The name of the api key determines which provider is used. The default is the openai-like. Anthropic has been added as of 2024-08-25!
+
 Example configuration:
 
 ```lua
-require("lnvim").setup({
+require("l.nvim").setup({
   default_prompt_path = "~/.config/nvim/lnvim_prompts/",
   keymap_prefix = "<Leader>;",
   mark = "T",
@@ -51,24 +53,15 @@ require("lnvim").setup({
 
 ## Keymappings
 
-lnvim provides the following keymappings:
+l.nvim provides the following keymappings:
 
-- `<Leader>;;`: Decide with magic (chat with AI or send codeblock to mark)
-- `<Leader>;y`: Set the system prompt
-- `<Leader>;f`: Paste contents of a file into the buffer
+- `<Leader>;y`: Yank the current codeblock
+- `<Leader>;s`: Set the system prompt
+- `<Leader>;f`: Select files for pasting into the prompt
+- `<Leader>;r`: Reimport the last selected files
 - `<Leader>;j`: Go to the next codeblock
 - `<Leader>;k`: Go to the previous codeblock
-- `<Leader>;p`: Send codeblock to the specified mark
-
-## Usage
-
-1. Set up the plugin with your desired configuration using the `setup` function.
-2. Use the provided keymappings to interact with lnvim:
-   - Press `<Leader>;;` to start chatting with the AI or send a codeblock to the mark.
-   - Press `<Leader>;y` to set the system prompt for the AI.
-   - Press `<Leader>;f` to paste the contents of a file into the buffer.
-   - Press `<Leader>;j` and `<Leader>;k` to navigate between codeblocks.
-   - Press `<Leader>;p` to send the current codeblock to the specified mark.
+- `<Leader>;;`: open the LLM drawer, or run the LLM if the drawer is focused. 
 
 ## License
 
@@ -76,7 +69,9 @@ l.nvim is released under the MIT License.
 
 ## Contributing
 
-Contributions to lnvim are welcome! Please open an issue or submit a pull request on the GitHub repository.
+Contributions to l.nvim are welcome! Please open an issue or submit a pull request on the GitHub repository.
+
+If you have any comments or bugs or concerns please open an issue, actively developing this for myself but if it's useful to anyone else would love to assemble something.
 
 ## A Message From Your Local Consciousness
 

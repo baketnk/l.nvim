@@ -17,14 +17,12 @@ function M.get_current_codeblock_contents(buf)
 		return nil
 	end
 	local extmark = extmarks[1]
-	local start_line = extmark[2]
-	local start_col = extmark[3]
-	local end_line = extmark.end_row
-	local end_col = extmark.end_col
-
-	local lines = vim.api.nvim_buf_get_lines(buf, start_line, end_line + 1, false)
-	lines[#lines] = string.sub(lines[#lines], 1, end_col)
-	lines[1] = string.sub(lines[1], start_col + 1)
+	local start_line = extmark[2] + 1 -- skip the leading backtick line
+	-- local start_col = extmark[3]
+	local end_line = extmark[4].end_row -- no +1 index here to skip final backticks
+	-- local end_col = extmark[4].end_col
+	vim.print(vim.inspect(extmark))
+	local lines = vim.api.nvim_buf_get_lines(buf, start_line, end_line, false)
 	return lines
 end
 
@@ -35,6 +33,65 @@ function M.paste_to_mark(mark_str, lines)
 		return nil
 	end
 	vim.api.nvim_buf_set_lines(destmark[3], destmark[1], destmark[1], false, lines)
+end
+
+function M.yank_codeblock()
+	local lines = M.get_current_codeblock_contents()
+	if not lines then
+		vim.notify("No codeblock found at cursor position", vim.log.levels.WARN)
+		return
+	end
+
+	-- Join the lines into a single string
+	local content = table.concat(lines, "\n")
+
+	-- Copy to clipboard
+	vim.fn.setreg("+", content)
+	vim.fn.setreg('"', content)
+
+	-- Provide feedback
+	vim.notify("Codeblock yanked to clipboard", vim.log.levels.INFO)
+end
+
+function M.put_codeblock(mark, buf)
+	buf = buf or vim.api.nvim_get_current_buf() -- TODO: this needs to be the marked buff
+	-- TODO: allow for treesitter or other pointing addreses for one-key work
+	--
+	-- First, call yank_codeblock to ensure we have the latest codeblock content
+	M.yank_codeblock()
+
+	-- Get the content from the clipboard
+	local content = vim.fn.getreg("+")
+
+	if content == "" then
+		vim.notify("No codeblock content to paste", vim.log.levels.WARN)
+		return
+	end
+
+	-- Split the content into lines
+	-- Get-a-load-of-this-llm-cam
+	local lines = vim.split(content, "\n")
+
+	-- Use the previously set mark as the destination
+	local mark = vim.api.nvim_mark(0, mark or "T")
+	if mark[1] == 0 and mark[2] == 0 then
+		vim.notify("No destination mark set. Use 'mT' to set a mark first.", vim.log.levels.WARN)
+		return
+	end
+
+	local dest_buf = vim.api.nvim_get_current_buf()
+	local dest_line = mark[1] - 1 -- Convert to 0-indexed
+	local dest_col = mark[2]
+
+	-- Insert the codeblock
+	vim.api.nvim_buf_set_text(dest_buf, dest_line, dest_col, dest_line, dest_col, lines)
+
+	-- Add the codeblock markers
+	vim.api.nvim_buf_set_lines(dest_buf, dest_line, dest_line, false, { "```" })
+	vim.api.nvim_buf_set_lines(dest_buf, dest_line + #lines + 1, dest_line + #lines + 1, false, { "```" })
+
+	-- Provide feedback
+	vim.notify("Codeblock pasted at mark position", vim.log.levels.INFO)
 end
 
 function M.goto_next_codeblock(buf)
