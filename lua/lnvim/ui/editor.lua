@@ -21,7 +21,6 @@ function M.get_current_codeblock_contents(buf)
 	-- local start_col = extmark[3]
 	local end_line = extmark[4].end_row -- no +1 index here to skip final backticks
 	-- local end_col = extmark[4].end_col
-	vim.print(vim.inspect(extmark))
 	local lines = vim.api.nvim_buf_get_lines(buf, start_line, end_line, false)
 	return lines
 end

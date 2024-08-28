@@ -1,3 +1,8 @@
+local buffers = require("lnvim.ui.buffers")
+local helpers = require("lnvim.utils.helpers")
+local primitive = require("lnvim.utils.primitive")
+-- local cfg = require("lnvim.cfg")
+
 M = {}
 local api = vim.api
 local Job = require("plenary.job")
@@ -81,21 +86,23 @@ local function make_lambda_args(system_prompt, prompt, model)
 	return make_openai_like_args(system_prompt, prompt, model, url, api_key)
 end
 
-local function get_prompt()
-	local current_buffer = api.nvim_get_current_buf()
-	stream_buf = current_buffer
-	local current_window = api.nvim_get_current_win()
-	local cursor_position = api.nvim_win_get_cursor(current_window)
-	local row = cursor_position[1]
-	local col = cursor_position[2]
-	-- set dest for what we want to do
-	stream_insert_extmark = api.nvim_buf_set_extmark(current_buffer, stream_insert_ns, row, col, {
-		hl_group = "LLMStream",
-	})
+function M.generate_prompt()
+	local file_contents = {}
+	local file_paths = vim.api.nvim_buf_get_lines(buffers.files_buffer, 0, -1, false)
 
-	local lines = vim.api.nvim_buf_get_lines(current_buffer, 0, row, true)
+	for _, path in ipairs(file_paths) do
+		local contents = helpers.read_file_contents_into_markdown(path)
+		table.insert(file_contents, contents)
+	end
 
-	return table.concat(lines, "\n")
+	local user_text = vim.api.nvim_buf_get_lines(buffers.work_buffer, 0, -1, false)
+
+	local file_contents_text = ""
+	if #file_contents > 0 then
+		file_contents_text = table.concat(primitive.flatten(file_contents), "\n\n") .. "\n\n"
+	end
+	local prompt = file_contents_text .. table.concat(user_text, "\n")
+	return prompt
 end
 
 function M.write_string_at_cursor(str)
@@ -117,25 +124,28 @@ end
 
 function M.write_string_at_llmstream(str)
 	vim.schedule(function()
-		local extmark =
-			api.nvim_buf_get_extmark_by_id(stream_buf, stream_insert_ns, stream_insert_extmark, { details = true })
+		local extmark = api.nvim_buf_get_extmark_by_id(
+			buffers.diff_buffer,
+			stream_insert_ns,
+			stream_insert_extmark,
+			{ details = true }
+		)
 		local row, col = extmark[3].end_row or -1, extmark[3].end_col or -1
 		local lines = vim.split(str, "\n", {})
 		vim.cmd("undojoin")
-		api.nvim_buf_set_text(0, row, col, row, col, lines)
+		api.nvim_buf_set_text(buffers.diff_buffer, row, col, row, col, lines)
 	end)
 end
 
 function M.handle_anthropic_data(data_stream)
-	vim.print(data_stream)
 	local json_ok, json = pcall(function()
 		return vim.json.decode(data_stream)
 	end)
-	vim.print(vim.inspect(json))
 	-- if we want, handle message_start, content_block_start/stop, ping events
 	if json_ok and json.type == "content_block_delta" then
 		local content = json.delta.text
 		if content then
+			-- M.write_string_at_cursor(content)
 			M.write_string_at_llmstream(content)
 		end
 	end
@@ -195,22 +205,24 @@ end
 function M.chat()
 	return nil
 end
-
+local max_prompt_length = 8192
 function M.chat_with_buffer(system_prompt)
 	-- vim.notify("build prompt")
-	local prompt = get_prompt()
+	local prompt = M.generate_prompt()
 	-- limit prompt size if needed, to the last X characters
-	prompt = vim.fn.strpart(prompt, -16386)
+	prompt = vim.fn.strpart(prompt, -max_prompt_length)
 	-- build curl args
 	if not M.default_provider then
 		vim.notify("Couldn't auto config providers, better UI is coming soon!")
 		return nil
 	end
+	stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, 0, 0, {})
 
 	local handler = M.provider_parse_map[M.default_provider]
 	local args = M.provider_args_map[M.default_provider](system_prompt, prompt)
 	local curr_event_state = nil
 	-- vim.notify("define locals")
+	--
 	local function parse_and_call(line)
 		local event = line:match("^event: (.+)$")
 		if event then

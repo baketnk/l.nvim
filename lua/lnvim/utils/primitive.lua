@@ -32,4 +32,14 @@ function M.debounce(func, wait)
 	end
 end
 
+function M.print_cursor_info(msg)
+	local win = vim.api.nvim_get_current_win()
+	local buf = vim.api.nvim_get_current_buf()
+	local ok, cursor = pcall(vim.api.nvim_win_get_cursor, win)
+	if not ok then
+		vim.notify("Error getting cursor: " .. tostring(cursor), vim.log.levels.ERROR)
+		return
+	end
+	vim.notify(msg .. " Win: " .. win .. "Buf: " .. buf .. "Cursor: " .. vim.inspect(cursor), vim.log.levels.DEBUG)
+end
 return M
