@@ -75,6 +75,51 @@ function M.open_close()
 	end
 end
 
+function M.replace_file_with_codeblock()
+	return editor.replace_file_with_codeblock()
+end
+
+function M.clear_buffers(which)
+	local buffers_to_clear = {}
+
+	if which == "all" or which == "d" then
+		table.insert(buffers_to_clear, buffers.diff_buffer)
+	end
+	if which == "all" or which == "f" then
+		table.insert(buffers_to_clear, buffers.files_buffer)
+	end
+	if which == "all" or which == "p" then
+		table.insert(buffers_to_clear, buffers.work_buffer)
+	end
+
+	for _, buf in ipairs(buffers_to_clear) do
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
+	end
+
+	local message
+	if which == "all" then
+		message = "All buffers cleared"
+	elseif which == "d" then
+		message = "Diff buffer cleared"
+	elseif which == "f" then
+		message = "Files buffer cleared"
+	elseif which == "p" then
+		message = "Work buffer cleared"
+	else
+		message = "No buffers cleared"
+	end
+	vim.notify(message, vim.log.levels.INFO)
+end
+
+function M.focus_main_window()
+	local l = layout.get_layout()
+	if l and vim.api.nvim_win_is_valid(l.main) then
+		vim.api.nvim_set_current_win(l.main)
+	else
+		vim.notify("Main window not found or invalid", vim.log.levels.WARN)
+	end
+end
+
 function M.decide_with_magic()
 	if vim.api.nvim_get_current_buf() == buffers.work_buffer then
 		-- if cursor is in a CodeBlock highlight, paste the highlight to the edit point

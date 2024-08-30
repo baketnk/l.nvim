@@ -7,19 +7,17 @@ function M.create_layout()
 	local height = vim.o.lines
 
 	-- Calculate dimensions
-	local col1_width = math.floor(width * 0.3)
-	local col2_width = math.floor(width * 0.3)
+	local col1_width = math.floor(width * 0.4)
+	local col2_width = math.floor(width * 0.25)
+	local col3_width = math.floor(width * 0.25)
 
 	local row1_height = math.floor(height * 0.3)
-	local row2_height = height - row1_height
-
+	local row2_height = 4
+	local row3_height = height - row1_height - row2_height
 	local layout = {}
 
 	-- Function to find or create a window for a specific buffer
 	layout.main = vim.api.nvim_get_current_win()
-
-	-- Arrange windows
-	-- vim.api.nvim_set_current_win(layout.main)
 
 	-- Create column layout
 	vim.cmd("vsplit")
@@ -33,21 +31,32 @@ function M.create_layout()
 	-- Set buffers to windows
 	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buffers.files_buffer)
 
+	-- Create todo window
+	vim.cmd("split")
+	layout.todo = vim.api.nvim_get_current_win()
+	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buffers.todo_buffer)
+
 	-- Create work window
 	vim.cmd("split")
 	layout.work = vim.api.nvim_get_current_win()
 	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buffers.work_buffer)
 
+	vim.cmd("wincmd h")
+	vim.cmd("wincmd h")
 	-- Set window sizes
 	vim.cmd("vertical resize " .. col1_width)
 	vim.cmd("wincmd l")
 	vim.cmd("vertical resize " .. col2_width)
+	vim.cmd("wincmd l")
+	vim.cmd("vertical resize " .. col3_width)
+	vim.cmd("resize " .. row1_height)
+	vim.cmd("wincmd j")
 	vim.cmd("resize " .. row2_height)
-
 	-- Update layout table with new window IDs
 	layout.main = vim.fn.win_findbuf(vim.api.nvim_get_current_buf())[1]
 	layout.diff = vim.fn.win_findbuf(buffers.diff_buffer)[1]
 	layout.files = vim.fn.win_findbuf(buffers.files_buffer)[1]
+	layout.todo = vim.fn.win_findbuf(buffers.todo_buffer)[1]
 	layout.work = vim.fn.win_findbuf(buffers.work_buffer)[1]
 	M.layout = layout
 	return layout
@@ -61,6 +70,7 @@ function M.close_layout()
 	pcall(vim.api.nvim_win_close, M.layout.diff, true)
 	pcall(vim.api.nvim_win_close, M.layout.files, true)
 	pcall(vim.api.nvim_win_close, M.layout.work, true)
+	pcall(vim.api.nvim_win_close, M.layout.todo, true)
 	M.layout = nil
 end
 function M.focus_drawer()

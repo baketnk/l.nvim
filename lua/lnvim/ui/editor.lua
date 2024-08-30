@@ -52,6 +52,43 @@ function M.yank_codeblock()
 	vim.notify("Codeblock yanked to clipboard", vim.log.levels.INFO)
 end
 
+function M.replace_file_with_codeblock()
+	local layout = require("lnvim.ui.layout").get_layout()
+	local buffers = require("lnvim.ui.buffers")
+
+	-- Check if we're in the diff buffer
+	if vim.api.nvim_get_current_buf() ~= buffers.diff_buffer then
+		vim.notify("This command can only be used from the diff buffer", vim.log.levels.WARN)
+		return
+	end
+
+	-- Get the current codeblock contents
+	local codeblock_contents = M.get_current_codeblock_contents()
+	if not codeblock_contents or #codeblock_contents == 0 then
+		vim.notify("No codeblock found at cursor position or codeblock is empty", vim.log.levels.WARN)
+		return
+	end
+
+	-- Replace the contents of the main buffer
+	local success, err = pcall(function()
+		vim.api.nvim_buf_set_lines(buffers.main_buffer, 0, -1, false, codeblock_contents)
+	end)
+
+	if not success then
+		vim.notify("Error replacing file contents: " .. tostring(err), vim.log.levels.ERROR)
+		return
+	end
+
+	-- Focus the main window
+	if layout and layout.main then
+		vim.api.nvim_set_current_win(layout.main)
+	else
+		vim.notify("Cannot focus main window: layout or main window not found", vim.log.levels.WARN)
+	end
+
+	vim.notify("File contents replaced with codeblock", vim.log.levels.INFO)
+end
+
 function M.put_codeblock(mark, buf)
 	buf = buf or vim.api.nvim_get_current_buf() -- TODO: this needs to be the marked buff
 	-- TODO: allow for treesitter or other pointing addreses for one-key work
