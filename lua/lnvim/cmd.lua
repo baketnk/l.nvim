@@ -5,6 +5,7 @@ local buffers = require("lnvim.ui.buffers")
 local constants = require("lnvim.constants")
 local helpers = require("lnvim.utils.helpers")
 local LLM = require("lnvim.llm")
+local Job = require("plenary.job")
 
 function M.setup_filetype_ac()
 	local group = vim.api.nvim_create_augroup("LCodeBlocks", { clear = true })
@@ -19,6 +20,103 @@ function M.setup_filetype_ac()
 			--M.editor.print_extmarks(ev.buf)
 		end,
 	})
+end
+
+function M.shell_to_prompt()
+	-- Prompt for the shell command
+	local command = vim.fn.input("Enter shell command: ")
+
+	if command == "" then
+		vim.notify("No command entered", vim.log.levels.WARN)
+		return
+	end
+
+	-- Run the command using Plenary Job
+	Job:new({
+		command = "bash",
+		args = { "-c", command },
+		on_exit = function(j, return_val)
+			local output = j:result()
+			local stderr = j:stderr_result()
+
+			-- Combine stdout and stderr
+			local combined_output = vim.tbl_flatten({ output, stderr })
+
+			-- Create the markdown codeblock
+			local codeblock = { "```bash", "$ " .. command }
+			vim.list_extend(codeblock, combined_output)
+			table.insert(codeblock, "```")
+
+			-- Insert the codeblock into the work buffer
+			vim.schedule(function()
+				local start_line = vim.api.nvim_buf_line_count(buffers.work_buffer)
+				vim.api.nvim_buf_set_lines(buffers.work_buffer, start_line, -1, false, codeblock)
+				vim.notify("Command output added to work buffer", vim.log.levels.INFO)
+			end)
+		end,
+	}):start()
+end
+
+function M.prompt_macro()
+	local telescope = require("telescope.builtin")
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
+
+	telescope.find_files({
+		prompt_title = "Select Prompt Macro File",
+		attach_mappings = function(prompt_bufnr, map)
+			actions.select_default:replace(function()
+				actions.close(prompt_bufnr)
+				local selection = action_state.get_selected_entry()
+				if selection then
+					-- Execute the selected macro file
+					M.execute_prompt_macro(selection.path)
+				end
+			end)
+			return true
+		end,
+	})
+end
+
+function M.execute_prompt_macro(file_path)
+	local content = helpers.read_file_contents(file_path)
+	if not content then
+		vim.notify("Failed to read file: " .. file_path, vim.log.levels.ERROR)
+		return
+	end
+
+	-- Look for bash code blocks and execute them
+	local lines = vim.split(content, "\n")
+	local in_bash_block = false
+	local bash_command = ""
+	local output = {}
+
+	for _, line in ipairs(lines) do
+		if line:match("^```bash") then
+			in_bash_block = true
+			table.insert(output, line)
+		elseif line:match("^```$") and in_bash_block then
+			in_bash_block = false
+			-- Execute the bash command
+			local result = vim.fn.system(bash_command)
+			table.insert(output, "$ " .. bash_command:gsub("\n", " "))
+			for _, res_line in ipairs(vim.split(result, "\n")) do
+				if res_line ~= "" then
+					table.insert(output, res_line)
+				end
+			end
+			table.insert(output, "```")
+			bash_command = ""
+		elseif in_bash_block then
+			bash_command = bash_command .. line .. "\n"
+		else
+			table.insert(output, line)
+		end
+	end
+
+	-- Add the processed content to the work buffer
+	vim.api.nvim_buf_set_lines(buffers.work_buffer, -1, -1, false, output)
+	vim.notify("Macro content added to work buffer", vim.log.levels.INFO)
 end
 
 function M.select_files_for_prompt()
@@ -59,11 +157,11 @@ function M.set_system_prompt(prompt_text)
 end
 
 function M.next_magic()
-	M.editor.goto_next_codeblock()
+	editor.goto_next_codeblock()
 end
 
 function M.previous_magic()
-	M.editor.goto_prev_codeblock()
+	editor.goto_prev_codeblock()
 end
 
 function M.open_close()

@@ -22,8 +22,9 @@ local function make_anthropic_args(system_prompt, prompt, model, messages)
 
 	local data = {
 		model = "claude-3-5-sonnet-20240620",
-		max_tokens = 1024,
+		max_tokens = 4096,
 		messages = messages or {
+
 			{ role = "user", content = prompt },
 		},
 		system = system_prompt,
@@ -31,7 +32,14 @@ local function make_anthropic_args(system_prompt, prompt, model, messages)
 	}
 
 	if toolcall.tools_enabled then
-		data.tools = toolcall.tools_available
+		data.tools = {}
+		for _, tool in pairs(toolcall.tools_available) do
+			table.insert(data.tools, {
+				name = tool.name,
+				description = tool.description,
+				input_schema = tool.input_schema,
+			})
+		end
 	end
 
 	local args = {
@@ -100,13 +108,17 @@ function M.generate_prompt()
 		table.insert(file_contents, contents)
 	end
 
+	local todo_text = vim.api.nvim_buf_get_lines(buffers.todo_buffer, 0, -1, false)
 	local user_text = vim.api.nvim_buf_get_lines(buffers.work_buffer, 0, -1, false)
 
 	local file_contents_text = ""
 	if #file_contents > 0 then
 		file_contents_text = table.concat(primitive.flatten(file_contents), "\n\n") .. "\n\n"
 	end
-	local prompt = file_contents_text .. table.concat(user_text, "\n")
+
+	local todo_text_formatted = #todo_text > 0 and "NOTES:\n" .. table.concat(todo_text, "\n") .. "\n\n" or ""
+
+	local prompt = file_contents_text .. todo_text_formatted .. table.concat(user_text, "\n")
 	return prompt
 end
 
@@ -137,68 +149,48 @@ function M.write_string_at_llmstream(str)
 		)
 		local row, col = extmark[3].end_row or -1, extmark[3].end_col or -1
 		local lines = vim.split(str, "\n", {})
-		vim.cmd("undojoin")
+		pcall(vim.cmd.undojoin)
 		api.nvim_buf_set_text(buffers.diff_buffer, row, col, row, col, lines)
+		vim.print(str)
 	end)
 end
 
 local llm_messages = {}
-
+local tool_queue = {}
+local partial_json = ""
+local tool_name = ""
 function M.handle_anthropic_data(data_stream)
-	local json_ok, json = pcall(function()
-		return vim.json.decode(data_stream)
-	end)
+	local json_ok, json = pcall(vim.json.decode, data_stream)
 	if json_ok then
-		if json.type == "content_block_delta" then
-			local content = json.delta.text
-			if content then
-				M.write_string_at_llmstream(content)
+		if json.type == "content_block_start" then
+			if json.content_block and json.content_block.type == "tool_use" then
+				tool_name = json.content_block.name or tool_name or "Unknown"
+			elseif json.content and json.content.type == "tool_use" then
+				tool_name = json.content.name or tool_name or "Unknown"
 			end
-		elseif json.type == "tool_call" then
-			local tool_name = json.tool_call["function"].name
-			local tool_args = json.tool_call["function"].arguments
-
-			-- Print friendly format to buffer
-			M.write_string_at_llmstream("\n\nTool Call: " .. tool_name .. "\nArguments: " .. tool_args .. "\n")
-
-			-- Save tool call in proper JSON format for LLM consumption
-			local tool_call_message = {
-				finish_reason = "tool_calls",
-				index = 0,
-				logprobs = vim.NIL,
-				message = {
-					content = vim.NIL,
-					role = "assistant",
-					function_call = vim.NIL,
-					tool_calls = {
-						{
-							id = "call_" .. tostring(os.time()),
-							["function"] = {
-								arguments = tool_args,
-								name = tool_name,
-							},
-							type = "function",
-						},
-					},
-				},
-			}
-
-			-- Append tool call message to llm_messages
-			table.insert(llm_messages, tool_call_message)
-
-			-- Execute tool and get result
-			local tool = toolcall.tools_available[tool_name]
-			local result = tool.func(tool_args)
-
-			-- Print tool result
-			M.write_string_at_llmstream("Result: " .. result .. "\n\n")
-
-			-- Append tool result to messages
-			table.insert(llm_messages, { role = "function", name = tool_name, content = result })
-
-			-- Call LLM again with updated messages
-			M.call_llm_with_messages()
+			M.write_string_at_llmstream("\n\nTool Call: " .. tool_name .. "\n")
+			partial_json = ""
+		elseif json.type == "content_block_delta" then
+			if json.delta and json.delta.type == "input_json_delta" then
+				partial_json = partial_json .. (json.delta.partial_json or "")
+			elseif json.delta and json.delta.text then
+				M.write_string_at_llmstream(json.delta.text)
+			end
+		elseif json.type == "content_block_stop" then
+			local tool_input_ok, tool_input = pcall(vim.json.decode, partial_json)
+			if tool_input_ok then
+				M.write_string_at_llmstream("Arguments: " .. vim.inspect(tool_input) .. "\n")
+				table.insert(tool_queue, {
+					name = tool_name,
+					input = tool_input,
+				})
+				vim.schedule(M.process_tool_queue)
+			else
+				vim.notify("Failed to parse tool input JSON: " .. partial_json)
+			end
 		end
+	else
+		vim.print("Failed to parse JSON: " .. data_stream)
 	end
 end
 
@@ -214,6 +206,49 @@ function M.handle_openai_data(data_stream, event_state)
 		end
 	end
 	-- end
+end
+
+function M.process_tool_queue()
+	if #tool_queue > 0 then
+		local tool = table.remove(tool_queue, 1)
+		local tool_func = toolcall.tools_functions[tool.name]
+
+		if not tool_func then
+			vim.notify("Tool function not found for: " .. tool.name)
+			return
+		end
+
+		if type(tool.input) ~= "table" or vim.tbl_isempty(tool.input) then
+			vim.notify("Invalid tool input: " .. vim.inspect(tool.input))
+			return
+		end
+
+		local ok, result = pcall(tool_func, tool.input)
+		if not ok then
+			vim.notify("Error executing tool: " .. result)
+			return
+		end
+
+		M.write_string_at_llmstream("Result: " .. result .. "\n\n")
+
+		-- Format the tool result as per the requirement
+		local tool_result = {
+			role = "user",
+			content = {
+				{
+					type = "tool_result",
+					tool_use_id = "toolu_" .. os.time(), -- Generate a unique ID
+					content = result,
+				},
+			},
+		}
+
+		-- Append tool result to messages
+		table.insert(llm_messages, tool_result)
+
+		-- Call LLM again with updated messages
+		M.call_llm_with_messages()
+	end
 end
 
 local group = vim.api.nvim_create_augroup("FLATVIBE_AutoGroup", { clear = true })
@@ -253,7 +288,7 @@ function M.cycle_provider()
 	end
 end
 
-local max_prompt_length = 8192
+local max_prompt_length = 10000
 
 function M.call_llm_with_messages()
 	local system_prompt = M.system_prompt or ""
@@ -283,6 +318,7 @@ end
 function M.call_llm(args, handler)
 	local curr_event_state = nil
 
+	tool_name = ""
 	local function parse_and_call(line)
 		local event = line:match("^event: (.+)$")
 		if event then
@@ -299,18 +335,41 @@ function M.call_llm(args, handler)
 		active_job:shutdown()
 		active_job = nil
 	end
-
+	-- vim.print("Full curl command: curl " .. table.concat(args, " "))
 	active_job = Job:new({
 		command = "curl",
 		args = args,
 		on_stdout = function(_, out)
 			parse_and_call(out)
+			vim.schedule(function()
+				vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "Received: " .. out })
+			end)
 		end,
 		on_stderr = function(_, err)
-			M.write_string_at_cursor(err)
+			vim.print("Error in LLM call: " .. err, vim.log.levels.ERROR)
+			-- active_job.shutdown()
+			--
+			vim.schedule(function()
+				vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "Error: " .. err })
+			end)
+		end,
+		on_exit = function(j, return_val)
+			vim.schedule(function()
+				vim.api.nvim_buf_set_lines(
+					buffers.diff_buffer,
+					-1,
+					-1,
+					false,
+					{ "Job exited with return value: " .. (return_val or "nil") }
+				)
+			end)
 		end,
 	})
-
+	vim.print("requesting from LLM")
+	vim.schedule(function()
+		vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "Requesting from LLM..." })
+	end)
+	active_job:start()
 	active_job:start()
 
 	vim.api.nvim_create_autocmd("User", {

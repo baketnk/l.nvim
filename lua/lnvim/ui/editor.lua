@@ -1,5 +1,5 @@
 local M = {}
-
+local buffers = require("lnvim.ui.buffers")
 local ns_id = vim.api.nvim_create_namespace("LnvimCodeblock")
 
 function M.get_current_codeblock_contents(buf)
@@ -50,11 +50,11 @@ function M.yank_codeblock()
 
 	-- Provide feedback
 	vim.notify("Codeblock yanked to clipboard", vim.log.levels.INFO)
+	return true
 end
 
 function M.replace_file_with_codeblock()
 	local layout = require("lnvim.ui.layout").get_layout()
-	local buffers = require("lnvim.ui.buffers")
 
 	-- Check if we're in the diff buffer
 	if vim.api.nvim_get_current_buf() ~= buffers.diff_buffer then
@@ -69,24 +69,63 @@ function M.replace_file_with_codeblock()
 		return
 	end
 
-	-- Replace the contents of the main buffer
-	local success, err = pcall(function()
-		vim.api.nvim_buf_set_lines(buffers.main_buffer, 0, -1, false, codeblock_contents)
-	end)
+	-- Check if the codeblock has a file path in its first line
+	local file_path = codeblock_contents[1]:match("^%s*(%S+)%s*$")
+	local target_buffer
 
-	if not success then
-		vim.notify("Error replacing file contents: " .. tostring(err), vim.log.levels.ERROR)
-		return
+	if file_path then
+		-- Try to find an existing buffer for this file
+		for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.api.nvim_buf_get_name(buf) == file_path then
+				target_buffer = buf
+				break
+			end
+		end
+
+		-- If no existing buffer, check if the file is writable and create a new buffer
+		if not target_buffer then
+			local f = io.open(file_path, "w")
+			if f then
+				f:close()
+				target_buffer = vim.fn.bufadd(file_path)
+				vim.fn.bufload(target_buffer)
+			else
+				vim.notify("Cannot write to file: " .. file_path, vim.log.levels.WARN)
+			end
+		end
+
+		-- Remove the file path from codeblock_contents
+		table.remove(codeblock_contents, 1)
 	end
 
-	-- Focus the main window
-	if layout and layout.main then
-		vim.api.nvim_set_current_win(layout.main)
+	-- If no specific file found, use the buffer in the main window
+	if not target_buffer then
+		target_buffer = vim.api.nvim_win_get_buf(layout.main)
+	end
+
+	-- Replace the contents of the target buffer
+	if vim.api.nvim_buf_is_valid(target_buffer) then
+		local success, err = pcall(function()
+			vim.api.nvim_buf_set_lines(target_buffer, 0, -1, false, codeblock_contents)
+		end)
+
+		if not success then
+			vim.notify("Error replacing file contents: " .. tostring(err), vim.log.levels.ERROR)
+			return
+		end
+
+		-- Focus the main window and set it to the target buffer
+		if layout and layout.main and vim.api.nvim_win_is_valid(layout.main) then
+			vim.api.nvim_set_current_win(layout.main)
+			vim.api.nvim_win_set_buf(layout.main, target_buffer)
+		else
+			vim.notify("Cannot focus main window: layout or main window not found", vim.log.levels.WARN)
+		end
+
+		vim.notify("File contents replaced with codeblock", vim.log.levels.INFO)
 	else
-		vim.notify("Cannot focus main window: layout or main window not found", vim.log.levels.WARN)
+		vim.notify("Invalid target buffer", vim.log.levels.ERROR)
 	end
-
-	vim.notify("File contents replaced with codeblock", vim.log.levels.INFO)
 end
 
 function M.put_codeblock(mark, buf)

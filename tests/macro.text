@@ -1,0 +1,7 @@
+Some text before
+
+```bash
+echo "Hello from bash"
+```
+
+Some text after

@@ -4,6 +4,9 @@ luac.out
 # diff.txt
 diff.txt
 
+# private
+private/**
+
 # luarocks build files
 *.src.rock
 *.zip

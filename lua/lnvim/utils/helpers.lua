@@ -21,7 +21,16 @@ function M.read_file_contents_into_markdown(file_path)
 		return {}
 	end
 end
+function M.read_file_contents(file_path)
+	local file, err = io.open(file_path, "r")
+	if not file then
+		return nil, "Failed to open file: " .. (err or "")
+	end
 
+	local content = file:read("*all")
+	file:close()
+	return content
+end
 function M.select_files_for_prompt()
 	local existing_paths = vim.api.nvim_buf_get_lines(buffers.files_buffer, 0, -1, false)
 	local selected_paths = {}

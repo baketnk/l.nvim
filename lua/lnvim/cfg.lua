@@ -54,7 +54,17 @@ function M.setup(_opts)
 		lcmd.clear_buffers("p")
 	end, { desc = "Clear work buffer" })
 	M.make_plugKey("FocusMain", "n", "i", lcmd.focus_main_window, { desc = "Focus main window" })
-
+	M.make_plugKey("ToggleToolUsage", "n", "t", require("lnvim.toolcall").tools_toggle, { desc = "Toggle tool usage" })
+	M.make_plugKey(
+		"ShellToPrompt",
+		"n",
+		"p",
+		lcmd.shell_to_prompt,
+		{ desc = "Run shell command and add output to prompt" }
+	)
+	M.make_plugKey("PromptMacro", "n", "q", function()
+		vim.cmd("PromptMacro")
+	end, { desc = "Execute Prompt Macro" })
 	if opts.open_drawer_on_setup then
 		M.show_drawer()
 	end
