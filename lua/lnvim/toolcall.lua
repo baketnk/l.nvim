@@ -16,32 +16,21 @@ local function url_encode(str)
 end
 
 function M.add_tool(opts)
+	-- vim.print(opts)
 	local tool = {
 		name = opts.name,
 		description = opts.description,
-		input_schema = {
-			type = "object",
-			properties = {},
-			required = {},
-		},
+		input_schema = opts.input_schema,
 	}
 
-	for _, arg in ipairs(opts.input_schema.properties) do
-		tool.input_schema.properties[arg.name] = {
-			type = arg.type,
-			description = arg.desc,
-		}
-		if arg.required then
-			table.insert(tool.input_schema.required, arg.name)
-		end
-	end
+	-- vim.notify(vim.inspect(tool))
 
 	M.tools_available[opts.name] = tool
 	M.tools_functions[opts.name] = opts.func
 	return tool
 end
 
-M.tools_enabled = true
+M.tools_enabled = false
 function M.tools_toggle()
 	M.tools_enabled = not M.tools_enabled
 	vim.notify("tool calling is now " .. vim.inspect(M.tools_enabled))
@@ -85,7 +74,6 @@ if net_enabled then
 		input_schema = {
 			type = "object",
 			properties = {
-				search = { type = "string", description = "Filter based on substrings for repos and their usernames" },
 				author = { type = "string", description = "Filter models by an author or organization" },
 				filter = { type = "string", description = "Filter based on tags" },
 				sort = { type = "string", description = "Property to use when sorting (e.g., downloads, author)" },
@@ -142,6 +130,7 @@ if net_enabled then
 			end
 
 			if type(response_json) ~= "table" or #response_json == 0 then
+				vim.print(response.body)
 				return "No models found matching the criteria."
 			end
 

@@ -62,9 +62,16 @@ function M.setup(_opts)
 		lcmd.shell_to_prompt,
 		{ desc = "Run shell command and add output to prompt" }
 	)
-	M.make_plugKey("PromptMacro", "n", "q", function()
-		vim.cmd("PromptMacro")
-	end, { desc = "Execute Prompt Macro" })
+	M.make_plugKey("PromptMacro", "n", "q", lcmd.prompt_macro, { desc = "Execute Prompt Macro" })
+	M.make_plugKey("ApplyDiff", "n", "a", lcmd.apply_diff_to_buffer, { desc = "Apply diff to buffer" })
+	M.make_plugKey(
+		"ShellToPrompt",
+		"n",
+		"p",
+		lcmd.shell_to_prompt,
+		{ desc = "Run shell command and add output to prompt" }
+	)
+	M.make_plugKey("GenerateReadme", "n", "R", lcmd.generate_readme, { desc = "Generate README.md" })
 	if opts.open_drawer_on_setup then
 		M.show_drawer()
 	end

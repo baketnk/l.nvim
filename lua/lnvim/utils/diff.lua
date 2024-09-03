@@ -1,35 +1,65 @@
 local M = {}
 
-function M.applyDiff(lines, diffText)
-	local function split(str, sep)
-		local result = {}
-		for s in (str .. sep):gmatch("(.-)" .. sep) do
-			table.insert(result, s)
+function M.applyDiff(originalLines, diffText)
+	local result = {}
+	local currentLine = 1
+	local hunkStart, hunkEnd, hunkLines
+
+	for line in diffText:gmatch("[^\r\n]+") do
+		-- Ignore file headers
+		if
+			line:match("^diff %-%-git")
+			or line:match("^index %x+%.%x+ %d+")
+			or line:match("^%-%-%- %S+")
+			or line:match("^%+%+%+ %S+")
+		then
+			-- Skip these lines
+		elseif line:match("^@@") then
+			-- Apply previous hunk if exists
+			if hunkLines then
+				for _, hunkLine in ipairs(hunkLines) do
+					table.insert(result, hunkLine)
+				end
+			end
+
+			-- Parse new hunk header
+			hunkStart, hunkEnd = line:match("@@ %-(%d+),?%d*%s+%+(%d+)")
+			hunkStart, hunkEnd = tonumber(hunkStart), tonumber(hunkEnd)
+
+			-- Copy lines before the hunk
+			while currentLine < hunkStart do
+				table.insert(result, originalLines[currentLine])
+				currentLine = currentLine + 1
+			end
+
+			hunkLines = {}
+		elseif line:sub(1, 1) == "+" then
+			-- Add new line
+			table.insert(hunkLines, line:sub(2))
+		elseif line:sub(1, 1) == "-" then
+			-- Skip removed line
+			currentLine = currentLine + 1
+		elseif line:sub(1, 1) == " " then
+			-- Keep unchanged line
+			table.insert(hunkLines, line:sub(2))
+			currentLine = currentLine + 1
 		end
-		return result
 	end
 
-	for diffLine in diffText:gmatch("[^\r\n]+") do
-		local lineNum, operation, content = diffLine:match("(%d+):?(%S*) (.+)")
-		lineNum = tonumber(lineNum)
-
-		if operation == "+" then
-			-- Add a new line
-			table.insert(lines, lineNum + 1, content:match('"(.+)"'))
-		elseif operation:match("%d+%-%d+") then
-			-- Replace part of a line
-			local start, finish = operation:match("(%d+)%-(%d+)")
-			start, finish = tonumber(start), tonumber(finish)
-			local old, new = content:match('"(.+)" %-> "(.+)"')
-			lines[lineNum] = lines[lineNum]:sub(1, start - 1) .. new .. lines[lineNum]:sub(finish + 1)
-		else
-			-- Replace entire line
-			local old, new = content:match('"(.+)" %-> "(.+)"')
-			lines[lineNum] = new
+	-- Apply last hunk
+	if hunkLines then
+		for _, hunkLine in ipairs(hunkLines) do
+			table.insert(result, hunkLine)
 		end
 	end
 
-	return lines
+	-- Copy remaining lines after the last hunk
+	while currentLine <= #originalLines do
+		table.insert(result, originalLines[currentLine])
+		currentLine = currentLine + 1
+	end
+
+	return result
 end
 
 return M

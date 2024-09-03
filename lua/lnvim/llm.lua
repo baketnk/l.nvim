@@ -37,7 +37,7 @@ local function make_anthropic_args(system_prompt, prompt, model, messages)
 			table.insert(data.tools, {
 				name = tool.name,
 				description = tool.description,
-				input_schema = tool.input_schema,
+				input_schema = vim.deepcopy(tool.input_schema, true),
 			})
 		end
 	end
@@ -168,7 +168,6 @@ function M.handle_anthropic_data(data_stream)
 			elseif json.content and json.content.type == "tool_use" then
 				tool_name = json.content.name or tool_name or "Unknown"
 			end
-			M.write_string_at_llmstream("\n\nTool Call: " .. tool_name .. "\n")
 			partial_json = ""
 		elseif json.type == "content_block_delta" then
 			if json.delta and json.delta.type == "input_json_delta" then
@@ -341,9 +340,6 @@ function M.call_llm(args, handler)
 		args = args,
 		on_stdout = function(_, out)
 			parse_and_call(out)
-			vim.schedule(function()
-				vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "Received: " .. out })
-			end)
 		end,
 		on_stderr = function(_, err)
 			vim.print("Error in LLM call: " .. err, vim.log.levels.ERROR)
@@ -353,23 +349,8 @@ function M.call_llm(args, handler)
 				vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "Error: " .. err })
 			end)
 		end,
-		on_exit = function(j, return_val)
-			vim.schedule(function()
-				vim.api.nvim_buf_set_lines(
-					buffers.diff_buffer,
-					-1,
-					-1,
-					false,
-					{ "Job exited with return value: " .. (return_val or "nil") }
-				)
-			end)
-		end,
 	})
-	vim.print("requesting from LLM")
-	vim.schedule(function()
-		vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "Requesting from LLM..." })
-	end)
-	active_job:start()
+	vim.notify("requesting from LLM")
 	active_job:start()
 
 	vim.api.nvim_create_autocmd("User", {

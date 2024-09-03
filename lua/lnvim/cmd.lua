@@ -6,6 +6,7 @@ local constants = require("lnvim.constants")
 local helpers = require("lnvim.utils.helpers")
 local LLM = require("lnvim.llm")
 local Job = require("plenary.job")
+local diff_utils = require("lnvim.utils.diff")
 
 function M.setup_filetype_ac()
 	local group = vim.api.nvim_create_augroup("LCodeBlocks", { clear = true })
@@ -20,6 +21,61 @@ function M.setup_filetype_ac()
 			--M.editor.print_extmarks(ev.buf)
 		end,
 	})
+end
+
+function M.apply_diff_to_buffer()
+	vim.notify("Entering apply_diff_to_buffer function", vim.log.levels.INFO)
+	-- Check if we're in the diff buffer
+	if vim.api.nvim_get_current_buf() ~= buffers.diff_buffer then
+		vim.notify("Not in diff buffer. Current buffer: " .. vim.api.nvim_get_current_buf(), vim.log.levels.WARN)
+		return
+	end
+
+	-- Get the entire diff buffer content
+	-- Log the content of the diff buffer
+	local diff_content = table.concat(vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false), "\n")
+	vim.notify("Diff content:\n" .. diff_content, vim.log.levels.INFO)
+
+	-- Split the diff content into separate file diffs
+	local file_diffs = {}
+	local current_file = nil
+	for line in diff_content:gmatch("[^\r\n]+") do
+		if line:match("^diff %-%-git") then
+			if current_file then
+				table.insert(file_diffs, current_file)
+			end
+			current_file = { header = line, content = {} }
+		elseif current_file then
+			table.insert(current_file.content, line)
+		end
+	end
+	if current_file then
+		table.insert(file_diffs, current_file)
+	end
+
+	-- Apply diffs to each file
+	for _, file_diff in ipairs(file_diffs) do
+		local file_path = file_diff.header:match("b/(.+)$")
+		if file_path then
+			-- Open or focus the buffer for this file
+			local buf = vim.fn.bufnr(file_path, true)
+			if buf == -1 then
+				buf = vim.fn.bufadd(file_path)
+			end
+			vim.api.nvim_set_current_buf(buf)
+
+			-- Get the original content of the buffer
+			local original_lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+
+			-- Apply the diff
+			local new_lines = diff_utils.applyDiff(original_lines, table.concat(file_diff.content, "\n"))
+
+			-- Replace the contents of the buffer
+			vim.api.nvim_buf_set_lines(buf, 0, -1, false, new_lines)
+
+			vim.notify("Diff applied to " .. file_path, vim.log.levels.INFO)
+		end
+	end
 end
 
 function M.shell_to_prompt()
@@ -231,4 +287,96 @@ function M.decide_with_magic()
 		layout.show_drawer()
 	end
 end
+
+function M.generate_readme()
+	local cfg = require("lnvim.cfg")
+	local keymaps = {}
+	-- Iterate through the M.make_plugKey calls in cfg.lua
+	for _, v in pairs(cfg) do
+		if type(v) == "function" then
+			local info = debug.getinfo(v)
+			if info.nparams == 5 then -- M.make_plugKey takes 5 parameters
+				local src = info.source:sub(2) -- Remove the '@' at the beginning
+				local lines = vim.fn.readfile(src)
+				for _, line in ipairs(lines) do
+					local name, mode, keys, func, opts =
+						line:match('M%.make_plugKey%("([^"]+)", "([^"]+)", "([^"]+)", ([^,]+), ({.+})%)')
+					if name and keys and opts then
+						local desc = opts:match('desc = "([^"]+)"')
+						if desc then
+							table.insert(keymaps, {
+								key = cfg.keymap_prefix .. keys,
+								desc = desc,
+							})
+						end
+					end
+				end
+			end
+		end
+	end
+
+	local readme_content = [[
+# ]] .. constants.display_name .. [[
+
+]] .. constants.display_name .. [[ is a Neovim plugin that integrates large language models (LLMs) into your editing workflow.
+
+## Features
+
+- Interact with LLMs directly from your editor
+- Apply AI-generated changes to your code
+- Execute shell commands and add their output to the prompt
+- Use prompt macros for quick and consistent interactions
+
+## Installation
+
+Using [packer.nvim](https://github.com/wbthomason/packer.nvim):
+
+```lua
+use {
+	'your-username/]] .. constants.display_name .. [[',
+	config = function()
+		require('lnvim').setup()
+	end
+}
+```
+
+## Configuration
+
+You can configure ]] .. constants.display_name .. [[ by passing options to the setup function:
+
+```lua
+require('lnvim').setup({
+	keymap_prefix = "<Leader>;",
+	open_drawer_on_setup = true,
+})
+```
+
+## Keymappings
+
+]]
+
+	for _, keymap in ipairs(keymaps) do
+		readme_content = readme_content .. "- `" .. keymap.key .. "`: " .. keymap.desc .. "\n"
+	end
+
+	readme_content = readme_content .. [[
+
+## License
+
+MIT
+
+]]
+
+	-- Write the README.md file
+	local readme_path = vim.fn.getcwd() .. "/README.md"
+	local file = io.open(readme_path, "w")
+	if file then
+		file:write(readme_content)
+		file:close()
+		vim.notify("README.md generated successfully", vim.log.levels.INFO)
+	else
+		vim.notify("Failed to write README.md", vim.log.levels.ERROR)
+	end
+end
+
 return M
