@@ -46,7 +46,7 @@ require('lnvim').setup({
 
 ### Default Model Configuration
 
-
+Override these by passing `opts.models`.
 
 | Model ID | Model Type | API URL | API Key | Use Toolcalling |
 |----------|------------|---------|---------|-----------------|
