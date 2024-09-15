@@ -1,6 +1,8 @@
 # l.nvim
 l.nvim is a Neovim plugin that integrates large language models (LLMs) into your editing workflow.
 
+N.B.: The plugin interface will change randomly whenever I feel like updating. Lock your commit hash or be prepared for trouble!
+
 ## Features
 
 - Interact with LLMs directly from your editor
@@ -10,15 +12,12 @@ l.nvim is a Neovim plugin that integrates large language models (LLMs) into your
 
 ## Installation
 
-Using [packer.nvim](https://github.com/wbthomason/packer.nvim):
+I use lazy.nvim. It's pretty straightforward if you want defaults, see customization if you want overrides.
 
-```lua
-use {
-	'your-username/l.nvim',
-	config = function()
-		require('lnvim').setup()
-	end
-}
+```
+  {
+    "baketnk/l.nvim"
+  }
 ```
 
 ## Configuration
@@ -32,6 +31,33 @@ require('lnvim').setup({
 })
 ```
 
+### Configuration Variables
+
+
+
+| Variable | Default Value |
+|----------|---------------|
+
+| max_prompt_length | 16000| |
+| default_prompt_path | os.getenv("HOME") .. "/.local/share/lnvim/"| |
+| keymap_prefix | "<Leader>;"| |
+
+
+
+### Default Model Configuration
+
+
+
+| Model ID | Model Type | API URL | API Key | Use Toolcalling |
+|----------|------------|---------|---------|-----------------|
+
+| claude-3-5-sonnet-20240620 | anthropic | https://api.anthropic.com/v1/messages | ANTHROPIC_API_KEY | false |
+| claude-3-opus-20240229 | anthropic | https://api.anthropic.com/v1/messages | ANTHROPIC_API_KEY | false |
+| hermes-3-llama-3.1-405b-fp8 | openaicompat | https://api.lambdalabs.com/v1/chat/completions | LAMBDA_API_KEY | false |
+| hermes3 | openaicompat | http://localhost:11434/v1/chat/completions |  | false |
+
+
+
 ## Keymappings
 
 - `<Leader>;y`: Yank code block
@@ -41,8 +67,8 @@ require('lnvim').setup({
 - `<Leader>;k`: Previous code block
 - `<Leader>;;`: Toggle drawer
 - `<Leader>;l`: Chat with LLM
-- `<Leader>;m`: Cycle LLM provider
 - `<Leader>;r`: Replace file with code
+- `<Leader>;m`: Select LLM model
 - `<Leader>;i`: Focus main window
 - `<Leader>;t`: Toggle tool usage
 - `<Leader>;q`: Execute Prompt Macro

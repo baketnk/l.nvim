@@ -1,6 +1,8 @@
 local M = {}
 local constants = require("lnvim.constants")
 local buffers = require("lnvim.ui.buffers")
+local LazyLoad = require("lnvim.utils.lazyload")
+local cfg = LazyLoad("lnvim.cfg")
 
 function M.create_layout()
 	local width = vim.o.columns
@@ -31,10 +33,10 @@ function M.create_layout()
 	-- Set buffers to windows
 	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buffers.files_buffer)
 
-	-- Create todo window
+	-- Create preamble window
 	vim.cmd("split")
-	layout.todo = vim.api.nvim_get_current_win()
-	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buffers.todo_buffer)
+	layout.preamble = vim.api.nvim_get_current_win()
+	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buffers.preamble_buffer)
 
 	-- Create work window
 	vim.cmd("split")
@@ -56,7 +58,7 @@ function M.create_layout()
 	layout.main = vim.fn.win_findbuf(vim.api.nvim_get_current_buf())[1]
 	layout.diff = vim.fn.win_findbuf(buffers.diff_buffer)[1]
 	layout.files = vim.fn.win_findbuf(buffers.files_buffer)[1]
-	layout.todo = vim.fn.win_findbuf(buffers.todo_buffer)[1]
+	layout.preamble = vim.fn.win_findbuf(buffers.preamble_buffer)[1]
 	layout.work = vim.fn.win_findbuf(buffers.work_buffer)[1]
 	M.layout = layout
 	return layout
@@ -70,7 +72,7 @@ function M.close_layout()
 	pcall(vim.api.nvim_win_close, M.layout.diff, true)
 	pcall(vim.api.nvim_win_close, M.layout.files, true)
 	pcall(vim.api.nvim_win_close, M.layout.work, true)
-	pcall(vim.api.nvim_win_close, M.layout.todo, true)
+	pcall(vim.api.nvim_win_close, M.layout.preamble, true)
 	M.layout = nil
 end
 function M.focus_drawer()
@@ -87,7 +89,7 @@ end
 function M.show_drawer()
 	-- Set up buffers
 	buffers.work_buffer = init_buffer(buffers.work_buffer)
-	buffers.todo_buffer = init_buffer(buffers.todo_buffer)
+	buffers.preamble_buffer = init_buffer(buffers.preamble_buffer)
 	buffers.diff_buffer = init_buffer(buffers.diff_buffer)
 	buffers.files_buffer = init_buffer(buffers.files_buffer)
 	buffers.new_version_buffer = init_buffer(buffers.new_version_buffer)
@@ -99,6 +101,14 @@ function M.show_drawer()
 		buffers.work_buffer,
 		"~" .. os.date("!%Y-%m-%d_%H-%M-%S_prompt") .. "." .. constants.filetype_ext
 	)
+	vim.api.nvim_buf_set_name(buffers.preamble_buffer, cfg.project_lnvim_dir .. "/preamble.txt")
+	local preamble_file = io.open(cfg.project_lnvim_dir .. "/preamble.txt", "r")
+	if preamble_file then
+		local preamble_content = preamble_file:read("*a")
+		preamble_file:close()
+		vim.api.nvim_buf_set_lines(buffers.preamble_buffer, 0, -1, false, vim.split(preamble_content, "\n"))
+	end
+	vim.api.nvim_win_set_option(layout.preamble, "wrap", true)
 
 	vim.api.nvim_buf_set_name(
 		buffers.diff_buffer,

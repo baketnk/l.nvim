@@ -2,102 +2,15 @@ local buffers = require("lnvim.ui.buffers")
 local helpers = require("lnvim.utils.helpers")
 local primitive = require("lnvim.utils.primitive")
 local toolcall = require("lnvim.toolcall")
--- local cfg = require("lnvim.cfg")
+-- local cfg = require("lnvim.cfg") -- CYCLIC DO NOT UNCOMMENT
+local LazyLoad = require("lnvim.utils.lazyload")
+local cfg = LazyLoad("lnvim.cfg")
 
 M = {}
 local api = vim.api
 local Job = require("plenary.job")
 local stream_insert_ns = api.nvim_create_namespace("lnvim_model_stream")
 local stream_insert_extmark = 0
-local stream_buf = 0
-
-local function make_anthropic_args(system_prompt, prompt, model, messages)
-	local url = "https://api.anthropic.com/v1/messages"
-	local api_key = os.getenv("ANTHROPIC_API_KEY")
-
-	if not api_key then
-		vim.notify("ANTHROPIC_API_KEY environment variable not set", vim.log.levels.ERROR)
-		return
-	end
-
-	local data = {
-		model = "claude-3-5-sonnet-20240620",
-		max_tokens = 4096,
-		messages = messages or {
-
-			{ role = "user", content = prompt },
-		},
-		system = system_prompt,
-		stream = true,
-	}
-
-	if toolcall.tools_enabled then
-		data.tools = {}
-		for _, tool in pairs(toolcall.tools_available) do
-			table.insert(data.tools, {
-				name = tool.name,
-				description = tool.description,
-				input_schema = vim.deepcopy(tool.input_schema, true),
-			})
-		end
-	end
-
-	local args = {
-		"-N",
-		"-s",
-		"-X",
-		"POST",
-		"-H",
-		"Content-Type: application/json",
-		"-H",
-		"x-api-key: " .. api_key,
-		"-H",
-		"anthropic-version: 2023-06-01",
-		"-d",
-		vim.json.encode(data),
-		url,
-	}
-	return args
-end
-
-local function make_openai_like_args(system_prompt, prompt, model, url, api_key)
-	if not api_key then
-		vim.notify("api key in environment variable not set", vim.log.levels.ERROR)
-		return
-	end
-
-	local data = {
-		model = model,
-		max_tokens = M.max_tokens or 1024,
-		messages = {
-			{ role = "system", content = system_prompt },
-			{ role = "user", content = prompt },
-		},
-		stream = true,
-	}
-
-	local args = {
-		"-N",
-		"-s",
-		"-X",
-		"POST",
-		"-H",
-		"Content-Type: application/json",
-		"-H",
-		"Authorization: Bearer " .. api_key,
-		"-d",
-		vim.json.encode(data),
-		url,
-	}
-	return args
-end
-
-local function make_lambda_args(system_prompt, prompt, model, messages)
-	model = model or "hermes-3-llama-3.1-405b-fp8"
-	local url = "https://api.lambdalabs.com/v1/chat/completions"
-	local api_key = os.getenv("LL_API_KEY") or os.getenv("LAMBDA_API_KEY")
-	return make_openai_like_args(system_prompt, prompt, model, url, api_key)
-end
 
 function M.generate_prompt()
 	local file_contents = {}
@@ -108,7 +21,7 @@ function M.generate_prompt()
 		table.insert(file_contents, contents)
 	end
 
-	local todo_text = vim.api.nvim_buf_get_lines(buffers.todo_buffer, 0, -1, false)
+	local preamble_text = vim.api.nvim_buf_get_lines(buffers.preamble_buffer, 0, -1, false)
 	local user_text = vim.api.nvim_buf_get_lines(buffers.work_buffer, 0, -1, false)
 
 	local file_contents_text = ""
@@ -116,10 +29,67 @@ function M.generate_prompt()
 		file_contents_text = table.concat(primitive.flatten(file_contents), "\n\n") .. "\n\n"
 	end
 
-	local todo_text_formatted = #todo_text > 0 and "NOTES:\n" .. table.concat(todo_text, "\n") .. "\n\n" or ""
+	local preamble_text_formatted = #preamble_text > 0 and "NOTES:\n" .. table.concat(preamble_text, "\n") .. "\n\n"
+		or ""
 
-	local prompt = file_contents_text .. todo_text_formatted .. table.concat(user_text, "\n")
+	local prompt = file_contents_text .. preamble_text_formatted .. table.concat(user_text, "\n")
 	return prompt
+end
+
+local function generate_args(model, system_prompt, prompt, messages, streaming)
+	local is_streaming = true
+	if streaming ~= nil then
+		is_streaming = is_streaming
+	end
+	local args = {
+		"-N",
+		"-s",
+		"-X",
+		"POST",
+		"-H",
+		"Content-Type: application/json",
+	}
+
+	if model.api_key then
+		table.insert(args, "-H")
+		table.insert(args, "Authorization: Bearer " .. os.getenv(model.api_key))
+	end
+
+	local data = {
+		model = model.model_id,
+		messages = messages or {
+			{ role = "system", content = system_prompt },
+			{ role = "user", content = prompt },
+		},
+		stream = is_streaming,
+	}
+
+	if model.model_type == "anthropic" then
+		data.max_tokens = 4096
+		data.system = system_prompt
+		table.remove(data.messages, 1) -- Remove system message for Anthropic
+		table.insert(args, "-H")
+		table.insert(args, "anthropic-version: 2023-06-01")
+	else
+		data.max_tokens = M.max_tokens or 1024
+	end
+
+	if model.use_toolcalling and toolcall.tools_enabled then
+		data.tools = {}
+		for _, tool in pairs(toolcall.tools_available) do
+			table.insert(data.tools, {
+				name = tool.name,
+				description = tool.description,
+				input_schema = vim.deepcopy(tool.input_schema, true),
+			})
+		end
+	end
+
+	table.insert(args, "-d")
+	table.insert(args, vim.json.encode(data))
+	table.insert(args, model.api_url)
+
+	return args
 end
 
 function M.write_string_at_cursor(str)
@@ -253,63 +223,19 @@ end
 local group = vim.api.nvim_create_augroup("FLATVIBE_AutoGroup", { clear = true })
 local active_job = nil
 
-M.provider_args_map = {
-	anthropic = make_anthropic_args,
-	lambdalabs = make_lambda_args,
-}
-M.provider_parse_map = {
-	anthropic = M.handle_anthropic_data,
-	lambdalabs = M.handle_openai_data,
-}
-M.providers_available = {}
--- default provider if not set explicitly
-if os.getenv("ANTHROPIC_API_KEY") then
-	M.providers_available[#M.providers_available + 1] = "anthropic"
-end
-if os.getenv("LAMBDA_API_KEY") then
-	M.providers_available[#M.providers_available + 1] = "lambdalabs"
-end
-
-M.default_provider = M.providers_available[1] or nil
-
-function M.cycle_provider()
-	if M.default_provider == M.providers_available[#M.providers_available] then
-		M.default_provider = M.providers_available[1]
-		vim.notify("switched to " .. M.default_provider)
-		return
-	end
-	for i, p in ipairs(M.providers_available) do
-		if M.default_provider == p then
-			M.default_provider = M.providers_available[i + 1]
-			vim.notify("switched to " .. M.default_provider)
-			return
-		end
-	end
-end
-
-local max_prompt_length = 10000
-
-function M.call_llm_with_messages()
-	local system_prompt = M.system_prompt or ""
-	local args = M.provider_args_map[M.default_provider](system_prompt, nil, nil, llm_messages)
-	local handler = M.provider_parse_map[M.default_provider]
-
-	return M.call_llm(args, handler)
-end
-
 function M.chat_with_buffer(system_prompt)
 	local prompt = M.generate_prompt()
-	prompt = vim.fn.strpart(prompt, -max_prompt_length)
+	prompt = vim.fn.strpart(prompt, -cfg.max_prompt_length)
 
-	if not M.default_provider then
-		vim.notify("Couldn't auto config providers, better UI is coming soon!")
+	if not cfg.current_model then
+		vim.notify("No model selected", vim.log.levels.ERROR)
 		return nil
 	end
 
 	stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, 0, 0, {})
 
-	local handler = M.provider_parse_map[M.default_provider]
-	local args = M.provider_args_map[M.default_provider](system_prompt, prompt)
+	local handler = cfg.current_model.model_type == "anthropic" and M.handle_anthropic_data or M.handle_openai_data
+	local args = generate_args(cfg.current_model, system_prompt, prompt)
 
 	return M.call_llm(args, handler)
 end
@@ -368,5 +294,4 @@ function M.call_llm(args, handler)
 	return active_job
 end
 
--- vim.notify("llm loaded!")
 return M

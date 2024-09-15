@@ -8,7 +8,7 @@ local function init_buffer(buf)
 end
 
 M.work_buffer = init_buffer(nil)
-M.todo_buffer = init_buffer(nil)
+M.preamble_buffer = init_buffer(nil)
 M.diff_buffer = init_buffer(nil)
 M.files_buffer = init_buffer(nil)
 M.new_version_buffer = init_buffer(nil)

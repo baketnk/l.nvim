@@ -7,6 +7,15 @@ local helpers = require("lnvim.utils.helpers")
 local LLM = require("lnvim.llm")
 local Job = require("plenary.job")
 local diff_utils = require("lnvim.utils.diff")
+local LazyLoad = require("lnvim.utils.lazyload")
+local cfg = LazyLoad("lnvim.cfg")
+
+local telescope = require("telescope")
+local pickers = require("telescope.pickers")
+local finders = require("telescope.finders")
+local conf = require("telescope.config").values
+local actions = require("telescope.actions")
+local action_state = require("telescope.actions.state")
 
 function M.setup_filetype_ac()
 	local group = vim.api.nvim_create_augroup("LCodeBlocks", { clear = true })
@@ -21,6 +30,68 @@ function M.setup_filetype_ac()
 			--M.editor.print_extmarks(ev.buf)
 		end,
 	})
+end
+
+function M.save_diff_buffer_contents()
+	if not cfg.llm_log_path then
+		return -- Skip saving if log path is not set
+	end
+
+	local diff_contents = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
+	if #diff_contents == 0 then
+		return -- Skip saving if buffer is empty
+	end
+
+	local timestamp = os.date("!%Y-%m-%dT%H-%M-%S") -- ISO 8601 format
+	local filename = string.format("%s/diff_%s.%s", cfg.llm_log_path, timestamp, constants.filetype_ext)
+
+	-- Ensure the target directory exists
+	local dir = vim.fn.fnamemodify(filename, ":h")
+	if vim.fn.isdirectory(dir) == 0 then
+		vim.fn.mkdir(dir, "p")
+	end
+
+	local file = io.open(filename, "w")
+	if file then
+		file:write(table.concat(diff_contents, "\n"))
+		file:close()
+		vim.notify("Diff buffer contents saved to " .. filename, vim.log.levels.INFO)
+	else
+		vim.notify("Failed to save diff buffer contents to " .. filename, vim.log.levels.ERROR)
+	end
+end
+
+function M.select_model()
+	local opts = {}
+	local models = cfg.models
+	local model_names = {}
+
+	for i, model in ipairs(models) do
+		table.insert(model_names, string.format("%d: %s (%s)", i, model.model_id, model.api_url))
+	end
+
+	local params = {
+		prompt_title = "Select Model",
+		finder = finders.new_table({
+			results = model_names,
+		}),
+		sorter = conf.generic_sorter(opts),
+		attach_mappings = function(prompt_bufnr, _)
+			actions.select_default:replace(function()
+				actions.close(prompt_bufnr)
+				local selection = action_state.get_selected_entry()
+				if selection then
+					local index = tonumber(selection[1]:match("^(%d+):"))
+					cfg.current_model = models[index]
+					vim.notify("Selected model: " .. cfg.current_model.model_id, vim.log.levels.INFO)
+				end
+			end)
+			return true
+		end,
+	}
+
+	local picker = pickers.new(opts, params)
+	picker:find()
 end
 
 function M.apply_diff_to_buffer()
@@ -238,6 +309,7 @@ function M.clear_buffers(which)
 
 	if which == "all" or which == "d" then
 		table.insert(buffers_to_clear, buffers.diff_buffer)
+		M.save_diff_buffer_contents()
 	end
 	if which == "all" or which == "f" then
 		table.insert(buffers_to_clear, buffers.files_buffer)
@@ -289,10 +361,10 @@ function M.decide_with_magic()
 end
 
 function M.generate_readme()
-	local cfg = require("lnvim.cfg")
+	local lcfg = require("lnvim.cfg")
 	local keymaps = {}
 	-- Iterate through the M.make_plugKey calls in cfg.lua
-	for _, v in pairs(cfg) do
+	for _, v in pairs(lcfg) do
 		if type(v) == "function" then
 			local info = debug.getinfo(v)
 			if info.nparams == 5 then -- M.make_plugKey takes 5 parameters
@@ -315,10 +387,38 @@ function M.generate_readme()
 		end
 	end
 
+	-- Extract configuration variables from cfg.setup()
+	local config_vars = {}
+	local cfg_setup_func = vim.fn.readfile(debug.getinfo(cfg.setup).source:sub(2))
+
+	for _, line in ipairs(cfg_setup_func) do
+		vim.print(line)
+		local var, _, default = line:match("M%.([%w_]+)%s*=%s*opts%.([%w_]+)%s*or%s*(.+)$")
+		if var then
+			table.insert(config_vars, { name = var, default = default })
+		end
+	end
+	vim.print(#config_vars)
+
+	-- Extract model configuration from cfg.default_models
+	local model_config = {}
+	for _, model in ipairs(cfg.default_models) do
+		local model_info = {
+			model_id = model.model_id,
+			model_type = model.model_type,
+			api_url = model.api_url,
+			api_key = model.api_key,
+			use_toolcalling = model.use_toolcalling,
+		}
+		table.insert(model_config, model_info)
+	end
+
 	local readme_content = [[
 # ]] .. constants.display_name .. [[
 
 ]] .. constants.display_name .. [[ is a Neovim plugin that integrates large language models (LLMs) into your editing workflow.
+
+N.B.: The plugin interface will change randomly whenever I feel like updating. Lock your commit hash or be prepared for trouble!
 
 ## Features
 
@@ -329,15 +429,12 @@ function M.generate_readme()
 
 ## Installation
 
-Using [packer.nvim](https://github.com/wbthomason/packer.nvim):
+I use lazy.nvim. It's pretty straightforward if you want defaults, see customization if you want overrides.
 
-```lua
-use {
-	'your-username/]] .. constants.display_name .. [[',
-	config = function()
-		require('lnvim').setup()
-	end
-}
+```
+  {
+    "baketnk/l.nvim"
+  }
 ```
 
 ## Configuration
@@ -350,6 +447,52 @@ require('lnvim').setup({
 	open_drawer_on_setup = true,
 })
 ```
+
+### Configuration Variables
+
+
+
+| Variable | Default Value |
+|----------|---------------|
+
+]]
+
+	for _, var in ipairs(config_vars) do
+		readme_content = readme_content .. "| " .. var.name .. " | " .. var.default .. "|" .. " |\n"
+	end
+
+	readme_content = readme_content
+		.. [[
+
+
+
+### Default Model Configuration
+
+
+
+| Model ID | Model Type | API URL | API Key | Use Toolcalling |
+|----------|------------|---------|---------|-----------------|
+
+]]
+
+	for _, model in ipairs(model_config) do
+		readme_content = readme_content
+			.. "| "
+			.. model.model_id
+			.. " | "
+			.. model.model_type
+			.. " | "
+			.. model.api_url
+			.. " | "
+			.. model.api_key
+			.. " | "
+			.. tostring(model.use_toolcalling)
+			.. " |\n"
+	end
+
+	readme_content = readme_content .. [[
+
+
 
 ## Keymappings
 

@@ -78,3 +78,8 @@ dist/
 
 # Local configuration files
 local.vim
+
+# ignore symlink
+nvimdev
+
+.lnvim/
