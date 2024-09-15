@@ -194,7 +194,7 @@ describe("toolcall", function()
 			vim.api.nvim_buf_set_lines(buffers.diff_buffer, 0, -1, false, {})
 
 			-- Call the LLM
-			local job = LLM.chat_with_buffer(LLM.system_prompt)
+			local job = LLM.chat_with_buffer()
 
 			-- Wait for the job to complete (you might need to adjust the timeout)
 			vim.wait(10000, function()

@@ -260,7 +260,7 @@ function M.paste_codeblock(buf)
 end
 
 function M.chat_with_magic()
-	return LLM.chat_with_buffer(LLM.system_prompt)
+	return LLM.chat_with_buffer()
 end
 
 function M.set_system_prompt(prompt_text)
@@ -349,7 +349,7 @@ end
 function M.decide_with_magic()
 	if vim.api.nvim_get_current_buf() == buffers.work_buffer then
 		-- if cursor is in a CodeBlock highlight, paste the highlight to the edit point
-		return LLM.chat_with_buffer(LLM.system_prompt)
+		return LLM.chat_with_buffer()
 	end
 
 	-- M.save_edit_point()

@@ -32,8 +32,8 @@ function M.generate_prompt()
 	local preamble_text_formatted = #preamble_text > 0 and "NOTES:\n" .. table.concat(preamble_text, "\n") .. "\n\n"
 		or ""
 
-	local prompt = file_contents_text .. preamble_text_formatted .. table.concat(user_text, "\n")
-	return prompt
+	local prompt = "<context>" .. file_contents_text .. "</context>" .. table.concat(user_text, "\n")
+	return prompt, preamble_text_formatted
 end
 
 local function generate_args(model, system_prompt, prompt, messages, streaming)
@@ -52,7 +52,11 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
 
 	if model.api_key then
 		table.insert(args, "-H")
-		table.insert(args, "Authorization: Bearer " .. os.getenv(model.api_key))
+		if model.model_type == "anthropic" then
+			table.insert(args, "x-api-key: " .. os.getenv(model.api_key))
+		else
+			table.insert(args, "Authorization: Bearer " .. os.getenv(model.api_key))
+		end
 	end
 
 	local data = {
@@ -65,7 +69,7 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
 	}
 
 	if model.model_type == "anthropic" then
-		data.max_tokens = 4096
+		data.max_tokens = 5000
 		data.system = system_prompt
 		table.remove(data.messages, 1) -- Remove system message for Anthropic
 		table.insert(args, "-H")
@@ -88,7 +92,6 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
 	table.insert(args, "-d")
 	table.insert(args, vim.json.encode(data))
 	table.insert(args, model.api_url)
-
 	return args
 end
 
@@ -121,7 +124,6 @@ function M.write_string_at_llmstream(str)
 		local lines = vim.split(str, "\n", {})
 		pcall(vim.cmd.undojoin)
 		api.nvim_buf_set_text(buffers.diff_buffer, row, col, row, col, lines)
-		vim.print(str)
 	end)
 end
 
@@ -223,8 +225,8 @@ end
 local group = vim.api.nvim_create_augroup("FLATVIBE_AutoGroup", { clear = true })
 local active_job = nil
 
-function M.chat_with_buffer(system_prompt)
-	local prompt = M.generate_prompt()
+function M.chat_with_buffer()
+	local prompt, system_prompt = M.generate_prompt()
 	prompt = vim.fn.strpart(prompt, -cfg.max_prompt_length)
 
 	if not cfg.current_model then
@@ -276,7 +278,7 @@ function M.call_llm(args, handler)
 			end)
 		end,
 	})
-	vim.notify("requesting from LLM")
+	vim.notify("requesting from LLM " .. cfg.current_model.model_type)
 	active_job:start()
 
 	vim.api.nvim_create_autocmd("User", {
