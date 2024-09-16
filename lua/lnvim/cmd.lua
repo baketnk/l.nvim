@@ -246,8 +246,11 @@ function M.execute_prompt_macro(file_path)
 	vim.notify("Macro content added to work buffer", vim.log.levels.INFO)
 end
 
+function M.select_all_files_for_prompt()
+	return helpers.select_files_for_prompt(true, true)
+end
 function M.select_files_for_prompt()
-	return helpers.select_files_for_prompt()
+	return helpers.select_files_for_prompt(false, false)
 end
 
 function M.yank_codeblock()

@@ -31,7 +31,8 @@ function M.read_file_contents(file_path)
 	file:close()
 	return content
 end
-function M.select_files_for_prompt()
+
+function M.select_files_for_prompt(hidden, no_ignore)
 	local existing_paths = vim.api.nvim_buf_get_lines(buffers.files_buffer, 0, -1, false)
 	local selected_paths = {}
 
@@ -58,7 +59,12 @@ function M.select_files_for_prompt()
 			return true
 		end,
 		multi = true,
+		hidden = hidden,
+		no_ignore = no_ignore,
 	}
+	if hidden then
+		opts.find_command = { "rg", "--files", "--hidden", "-g", "!.git" }
+	end
 
 	telescope.find_files(opts)
 end
