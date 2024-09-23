@@ -260,6 +260,71 @@ describe("promptmacro", function()
 	end)
 end)
 
+describe("LSP introspection", function()
+	local lnvim = require("lnvim")
+	local buffers = require("lnvim.ui.buffers")
+	local LLM = require("lnvim.llm")
+	local lsp = require("lnvim.lsp")
+
+	before_each(function()
+		-- Mock vim.lsp module
+		_G.vim = _G.vim or {}
+		_G.vim.lsp = {
+			get_active_clients = function()
+				return {
+					{
+						request_sync = function(method, params, timeout, bufnr)
+							if method == "textDocument/definition" then
+								return {
+									result = {
+										{
+											uri = "file:///path/to/mock/file.lua",
+											range = {
+												start = { line = 0, character = 0 },
+												["end"] = { line = 2, character = 0 },
+											},
+										},
+									},
+								}
+							end
+						end,
+					},
+				}
+			end,
+		}
+
+		-- Mock vim.uri_to_fname
+		_G.vim.uri_to_fname = function(uri)
+			return uri:gsub("file://", "")
+		end
+
+		-- Mock vim.fn.readfile
+		_G.vim.fn.readfile = function(filename)
+			return {
+				"local function mock_function()",
+				"  -- This is a mock function",
+				"end",
+			}
+		end
+
+		-- Initialize buffers
+		buffers.files_buffer = vim.api.nvim_create_buf(false, true)
+		buffers.work_buffer = vim.api.nvim_create_buf(false, true)
+	end)
+
+	it("should add LSP entry to files buffer and include it in generated prompt", function()
+		-- Add an LSP entry to the files buffer
+		local lsp_entry = "@lsp:function:mock_function:/path/to/mock/file.lua:1:1"
+		vim.api.nvim_buf_set_lines(buffers.files_buffer, 0, -1, false, { lsp_entry })
+
+		-- Generate the prompt
+		local prompt, _ = LLM.generate_prompt()
+
+		-- Check if the LSP entry is included in the prompt
+		assert.truthy(prompt:match("function mock_function%(%)"))
+	end)
+end)
+
 describe("Apply diff functionality", function()
 	local function setup_test_buffer(content)
 		local buf = vim.api.nvim_create_buf(false, true)

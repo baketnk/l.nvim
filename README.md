@@ -46,7 +46,7 @@ require('lnvim').setup({
 
 ### Default Model Configuration
 
-Override these by passing `opts.models`.
+
 
 | Model ID | Model Type | API URL | API Key | Use Toolcalling |
 |----------|------------|---------|---------|-----------------|
@@ -63,10 +63,13 @@ Override these by passing `opts.models`.
 - `<Leader>;y`: Yank code block
 - `<Leader>;s`: Set system prompt
 - `<Leader>;f`: Select prompt files
+- `<Leader>;F`: Select prompt files
+- `<Leader>;/`: LSP Introspection
 - `<Leader>;j`: Next code block
 - `<Leader>;k`: Previous code block
 - `<Leader>;;`: Toggle drawer
 - `<Leader>;l`: Chat with LLM
+- `<Leader>;L`: Chat with LLM including diff
 - `<Leader>;r`: Replace file with code
 - `<Leader>;m`: Select LLM model
 - `<Leader>;i`: Focus main window
@@ -79,3 +82,7 @@ Override these by passing `opts.models`.
 
 MIT
 
+## Notes
+
+- LSP support is rudimentary and might be awkward based on what buffer is active. YMMV.
+- this is mainly for my own use like I say elsewhere you should fork or lock the commit if you want to use seriously

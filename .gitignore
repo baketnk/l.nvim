@@ -83,3 +83,4 @@ local.vim
 nvimdev
 
 .lnvim/
+formats/*

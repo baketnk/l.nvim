@@ -5,6 +5,7 @@ local toolcall = require("lnvim.toolcall")
 -- local cfg = require("lnvim.cfg") -- CYCLIC DO NOT UNCOMMENT
 local LazyLoad = require("lnvim.utils.lazyload")
 local cfg = LazyLoad("lnvim.cfg")
+local LSP = require("lnvim.lsp")
 
 M = {}
 local api = vim.api
@@ -12,13 +13,22 @@ local Job = require("plenary.job")
 local stream_insert_ns = api.nvim_create_namespace("lnvim_model_stream")
 local stream_insert_extmark = 0
 
-function M.generate_prompt()
+function M.generate_prompt(include_diff)
 	local file_contents = {}
 	local file_paths = vim.api.nvim_buf_get_lines(buffers.files_buffer, 0, -1, false)
 
 	for _, path in ipairs(file_paths) do
-		local contents = helpers.read_file_contents_into_markdown(path)
-		table.insert(file_contents, contents)
+		if path:match("^@lsp:") then
+			-- Handle LSP entry
+			local lsp_content = LSP.get_lsp_definition(path)
+			if lsp_content then
+				table.insert(file_contents, lsp_content)
+			end
+		else
+			-- Handle regular file
+			local contents = helpers.read_file_contents_into_markdown(path)
+			table.insert(file_contents, contents)
+		end
 	end
 
 	local preamble_text = vim.api.nvim_buf_get_lines(buffers.preamble_buffer, 0, -1, false)
@@ -32,7 +42,15 @@ function M.generate_prompt()
 	local preamble_text_formatted = #preamble_text > 0 and "NOTES:\n" .. table.concat(preamble_text, "\n") .. "\n\n"
 		or ""
 
-	local prompt = "<context>" .. file_contents_text .. "</context>" .. table.concat(user_text, "\n")
+	local diff_text = ""
+	if include_diff then
+		local diff_contents = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
+		if #diff_contents > 0 then
+			diff_text = "DIFF:\n" .. table.concat(diff_contents, "\n") .. "\n\n"
+		end
+	end
+
+	local prompt = "<context>" .. file_contents_text .. diff_text .. "</context>" .. table.concat(user_text, "\n")
 	return prompt, preamble_text_formatted
 end
 
@@ -224,6 +242,23 @@ end
 
 local group = vim.api.nvim_create_augroup("FLATVIBE_AutoGroup", { clear = true })
 local active_job = nil
+
+function M.chat_with_buffer_and_diff()
+	local prompt, system_prompt = M.generate_prompt(true) -- Pass true to include diff buffer
+	prompt = vim.fn.strpart(prompt, -cfg.max_prompt_length)
+
+	if not cfg.current_model then
+		vim.notify("No model selected", vim.log.levels.ERROR)
+		return nil
+	end
+
+	stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, 0, 0, {})
+
+	local handler = cfg.current_model.model_type == "anthropic" and M.handle_anthropic_data or M.handle_openai_data
+	local args = generate_args(cfg.current_model, system_prompt, prompt)
+
+	return M.call_llm(args, handler)
+end
 
 function M.chat_with_buffer()
 	local prompt, system_prompt = M.generate_prompt()

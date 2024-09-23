@@ -9,8 +9,9 @@ local Job = require("plenary.job")
 local diff_utils = require("lnvim.utils.diff")
 local LazyLoad = require("lnvim.utils.lazyload")
 local cfg = LazyLoad("lnvim.cfg")
-
+local LSP = require("lnvim.lsp")
 local telescope = require("telescope")
+local telescope_builtin = require("telescope.builtin")
 local pickers = require("telescope.pickers")
 local finders = require("telescope.finders")
 local conf = require("telescope.config").values
@@ -266,6 +267,10 @@ function M.chat_with_magic()
 	return LLM.chat_with_buffer()
 end
 
+function M.chat_with_magic_and_diff()
+	return LLM.chat_with_buffer_and_diff()
+end
+
 function M.set_system_prompt(prompt_text)
 	local sp = prompt_text
 	if not sp then
@@ -301,6 +306,32 @@ function M.open_close()
 	else
 		layout.show_drawer()
 	end
+end
+
+-- DO NOT REMOVE THIS COMMENT, IMPORTANT DEFINITION OF INTERNAL SYNTAX
+-- LSP file list syntax: @lsp:<type>:<name>:<file>:<line>:<column>
+function M.lsp_introspect()
+	local l = layout.get_layout()
+	if not l or not vim.api.nvim_win_is_valid(l.main) then
+		vim.notify("Main window not found or invalid", vim.log.levels.WARN)
+		return
+	end
+
+	telescope_builtin.lsp_dynamic_workspace_symbols({
+		attach_mappings = function(prompt_bufnr, map)
+			actions.select_default:replace(function()
+				actions.close(prompt_bufnr)
+				local selections = action_state.get_selected_entries()
+				if selections then
+					for _, selection in ipairs(selections) do
+						LSP.handle_lsp_selection(selection)
+					end
+				end
+			end)
+			return true
+		end,
+		multi = true, -- Enable multi-select
+	})
 end
 
 function M.replace_file_with_codeblock()
