@@ -328,7 +328,7 @@ function M.chat_with_buffer()
 
 	local messages = M.generate_prompt()
 	stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, 0, 0, {})
-	vim.print(vim.inspect(cfg.current_model))
+	-- vim.print(vim.inspect(cfg.current_model))
 	local handler = cfg.current_model.model_type == "anthropic" and M.handle_anthropic_data or M.handle_openai_data
 	local args = generate_args(cfg.current_model, nil, nil, messages)
 
