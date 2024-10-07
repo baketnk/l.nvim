@@ -224,8 +224,11 @@ local partial_json = ""
 local tool_name = ""
 function M.handle_anthropic_data(data_stream)
 	local json_ok, json = pcall(vim.json.decode, data_stream)
+	vim.print(vim.inspect(json))
 	if json_ok then
-		if json.type == "content_block_start" then
+		if json.type == "error" then
+			M.write_string_at_llmstream(vim.inspect(json.error))
+		elseif json.type == "content_block_start" then
 			if json.content_block and json.content_block.type == "tool_use" then
 				tool_name = json.content_block.name or tool_name or "Unknown"
 			elseif json.content and json.content.type == "tool_use" then
@@ -247,7 +250,7 @@ function M.handle_anthropic_data(data_stream)
 					input = tool_input,
 				})
 				vim.schedule(M.process_tool_queue)
-			else
+			elseif toolcall.tools_enabled then
 				vim.print("Failed to parse tool input JSON: " .. partial_json)
 			end
 			M.print_user_delimiter()
