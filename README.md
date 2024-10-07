@@ -38,6 +38,7 @@ require('lnvim').setup({
 | Variable | Default Value |
 |----------|---------------|
 
+| autocomplete | {| |
 | max_prompt_length | 16000| |
 | default_prompt_path | os.getenv("HOME") .. "/.local/share/lnvim/"| |
 | keymap_prefix | "<Leader>;"| |
@@ -82,7 +83,3 @@ require('lnvim').setup({
 
 MIT
 
-## Notes
-
-- LSP support is rudimentary and might be awkward based on what buffer is active. YMMV.
-- this is mainly for my own use like I say elsewhere you should fork or lock the commit if you want to use seriously
