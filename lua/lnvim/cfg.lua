@@ -79,6 +79,20 @@ function M.setup(_opts)
 	for _, model in ipairs(opts.models or M.default_models) do
 		table.insert(M.models, validate_model(model))
 	end
+	-- Add these new tables to the M table in cfg.lua
+
+	M.autocomplete = opts.autocomplete or {
+		max_tokens = 300,
+		temperature = 0.5,
+	}
+
+	M.autocomplete_model = opts.autocomplete_model
+		or {
+			model_id = "deepseek-coder-v2:16b",
+			model_type = "openai",
+			api_url = "http://localhost:11434/v1/completions",
+			-- api_key = "",
+		}
 
 	M.current_model = M.models[1]
 	M.max_prompt_length = opts.max_prompt_length or 16000
@@ -167,6 +181,9 @@ function M.setup(_opts)
 		{ desc = "Run shell command and add output to prompt" }
 	)
 	M.make_plugKey("PromptMacro", "n", "q", lcmd.prompt_macro, { desc = "Execute Prompt Macro" })
+	M.make_plugKey("TriggerAutocomplete", "n", "c", function()
+		vim.schedule(lcmd.trigger_autocomplete)
+	end, { desc = "Trigger autocompletion" })
 	M.make_plugKey("ApplyDiff", "n", "a", lcmd.apply_diff_to_buffer, { desc = "Apply diff to buffer" })
 	M.make_plugKey(
 		"ShellToPrompt",

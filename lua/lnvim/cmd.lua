@@ -177,9 +177,9 @@ function M.shell_to_prompt()
 
 			-- Insert the codeblock into the work buffer
 			vim.schedule(function()
-				local start_line = vim.api.nvim_buf_line_count(buffers.work_buffer)
-				vim.api.nvim_buf_set_lines(buffers.work_buffer, start_line, -1, false, codeblock)
-				vim.notify("Command output added to work buffer", vim.log.levels.INFO)
+				local start_line = vim.api.nvim_buf_line_count(buffers.diff_buffer)
+				vim.api.nvim_buf_set_lines(buffers.diff_buffer, start_line, -1, false, codeblock)
+				vim.notify("Command output added to diff buffer", vim.log.levels.INFO)
 			end)
 		end,
 	}):start()
@@ -243,8 +243,8 @@ function M.execute_prompt_macro(file_path)
 	end
 
 	-- Add the processed content to the work buffer
-	vim.api.nvim_buf_set_lines(buffers.work_buffer, -1, -1, false, output)
-	vim.notify("Macro content added to work buffer", vim.log.levels.INFO)
+	vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, output)
+	vim.notify("Macro content added to diff buffer", vim.log.levels.INFO)
 end
 
 function M.select_all_files_for_prompt()
@@ -308,6 +308,10 @@ function M.open_close()
 	end
 end
 
+function M.trigger_autocomplete()
+	require("lnvim.autocomplete").trigger_autocomplete()
+end
+
 -- DO NOT REMOVE THIS COMMENT, IMPORTANT DEFINITION OF INTERNAL SYNTAX
 -- LSP file list syntax: @lsp:<type>:<name>:<file>:<line>:<column>
 function M.lsp_introspect()
@@ -359,8 +363,10 @@ function M.clear_buffers(which)
 	local message
 	if which == "all" then
 		message = "All buffers cleared"
+		require("lnvim.llm").print_user_delimiter()
 	elseif which == "d" then
 		message = "Diff buffer cleared"
+		require("lnvim.llm").print_user_delimiter()
 	elseif which == "f" then
 		message = "Files buffer cleared"
 	elseif which == "p" then
@@ -381,7 +387,7 @@ function M.focus_main_window()
 end
 
 function M.decide_with_magic()
-	if vim.api.nvim_get_current_buf() == buffers.work_buffer then
+	if vim.api.nvim_get_current_buf() == buffers.diff_buffer then
 		-- if cursor is in a CodeBlock highlight, paste the highlight to the edit point
 		return LLM.chat_with_buffer()
 	end

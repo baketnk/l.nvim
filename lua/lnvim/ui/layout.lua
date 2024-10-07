@@ -10,11 +10,11 @@ function M.create_layout()
 
 	-- Calculate dimensions
 	local col1_width = math.floor(width * 0.4)
-	local col2_width = math.floor(width * 0.25)
+	local col2_width = math.floor(width * 0.35)
 	local col3_width = math.floor(width * 0.25)
 
 	local row1_height = math.floor(height * 0.3)
-	local row2_height = 4
+	local row2_height = 8
 	local row3_height = height - row1_height - row2_height
 	local layout = {}
 
@@ -61,6 +61,7 @@ function M.create_layout()
 	layout.preamble = vim.fn.win_findbuf(buffers.preamble_buffer)[1]
 	layout.work = vim.fn.win_findbuf(buffers.work_buffer)[1]
 	M.layout = layout
+
 	return layout
 end
 
@@ -76,7 +77,7 @@ function M.close_layout()
 	M.layout = nil
 end
 function M.focus_drawer()
-	vim.api.nvim_set_current_win(M.layout.work)
+	vim.api.nvim_set_current_win(M.layout.diff)
 end
 
 local function init_buffer(buf)
@@ -117,8 +118,15 @@ function M.show_drawer()
 	-- diff buffer opts
 	vim.api.nvim_win_set_option(layout.diff, "wrap", true)
 
+	vim.api.nvim_win_set_option(layout.files, "wrap", true)
 	-- Focus on the prompt window
-	vim.api.nvim_set_current_win(layout.work)
+	vim.api.nvim_set_current_win(layout.diff)
+	if
+		vim.api.nvim_buf_line_count(buffers.diff_buffer) == 1
+		and vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)[1] == ""
+	then
+		require("lnvim.llm").print_user_delimiter()
+	end
 end
 
 return M

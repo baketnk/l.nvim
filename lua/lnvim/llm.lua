@@ -13,7 +13,7 @@ local Job = require("plenary.job")
 local stream_insert_ns = api.nvim_create_namespace("lnvim_model_stream")
 local stream_insert_extmark = 0
 
-function M.generate_prompt(include_diff)
+function M.generate_prompt()
 	local file_contents = {}
 	local file_paths = vim.api.nvim_buf_get_lines(buffers.files_buffer, 0, -1, false)
 
@@ -32,7 +32,7 @@ function M.generate_prompt(include_diff)
 	end
 
 	local preamble_text = vim.api.nvim_buf_get_lines(buffers.preamble_buffer, 0, -1, false)
-	local user_text = vim.api.nvim_buf_get_lines(buffers.work_buffer, 0, -1, false)
+	local diff_buffer_content = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
 
 	local file_contents_text = ""
 	if #file_contents > 0 then
@@ -42,16 +42,37 @@ function M.generate_prompt(include_diff)
 	local preamble_text_formatted = #preamble_text > 0 and "NOTES:\n" .. table.concat(preamble_text, "\n") .. "\n\n"
 		or ""
 
-	local diff_text = ""
-	if include_diff then
-		local diff_contents = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
-		if #diff_contents > 0 then
-			diff_text = "DIFF:\n" .. table.concat(diff_contents, "\n") .. "\n\n"
+	local messages = {}
+	local current_message = { role = "system", content = preamble_text_formatted .. file_contents_text }
+	local current_role = nil
+	local current_content = ""
+
+	for _, line in ipairs(diff_buffer_content) do
+		if line:match("%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-user") then
+			if current_role then
+				table.insert(messages, { role = current_role, content = current_content:gsub("^%s*(.-)%s*$", "%1") })
+			end
+			current_role = "user"
+			current_content = ""
+		elseif line:match("%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-assistant") then
+			if current_role then
+				table.insert(messages, { role = current_role, content = current_content:gsub("^%s*(.-)%s*$", "%1") })
+			end
+			current_role = "assistant"
+			current_content = ""
+		else
+			current_content = current_content .. line .. "\n"
 		end
 	end
 
-	local prompt = "<context>" .. file_contents_text .. diff_text .. "</context>" .. table.concat(user_text, "\n")
-	return prompt, preamble_text_formatted
+	if current_role then
+		table.insert(messages, { role = current_role, content = current_content:gsub("^%s*(.-)%s*$", "%1") })
+	end
+
+	-- Insert the system message at the beginning
+	table.insert(messages, 1, current_message)
+
+	return messages
 end
 
 local function generate_args(model, system_prompt, prompt, messages, streaming)
@@ -88,8 +109,8 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
 
 	if model.model_type == "anthropic" then
 		data.max_tokens = 5000
-		data.system = system_prompt
-		table.remove(data.messages, 1) -- Remove system message for Anthropic
+		local system_message = table.remove(data.messages, 1)
+		data.system = system_message.content
 		table.insert(args, "-H")
 		table.insert(args, "anthropic-version: 2023-06-01")
 	else
@@ -130,6 +151,13 @@ function M.write_string_at_cursor(str)
 	end)
 end
 
+function M.insert_assistant_delimiter()
+	local delimiter = string.rep("-", 40) .. "assistant" .. os.date(" %Y-%m-%d %H:%M:%S ") .. string.rep("-", 40)
+	vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "", delimiter, "" })
+	local line_count = vim.api.nvim_buf_line_count(buffers.diff_buffer)
+	stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, line_count - 1, 0, {})
+end
+
 function M.write_string_at_llmstream(str)
 	vim.schedule(function()
 		local extmark = api.nvim_buf_get_extmark_by_id(
@@ -139,9 +167,54 @@ function M.write_string_at_llmstream(str)
 			{ details = true }
 		)
 		local row, col = extmark[3].end_row or -1, extmark[3].end_col or -1
+		-- delimit
+
 		local lines = vim.split(str, "\n", {})
+
 		pcall(vim.cmd.undojoin)
 		api.nvim_buf_set_text(buffers.diff_buffer, row, col, row, col, lines)
+	end)
+end
+
+function M.print_user_delimiter()
+	vim.schedule(function()
+		local delimiter = string.rep("-", 40) .. "user" .. os.date(" %Y-%m-%d %H:%M:%S ") .. string.rep("-", 40)
+
+		local row, col
+
+		-- Get the current buffer line count
+		local line_count = api.nvim_buf_line_count(buffers.diff_buffer)
+
+		-- If the buffer is not empty, add a new line
+		if line_count > 0 then
+			api.nvim_buf_set_lines(buffers.diff_buffer, line_count, -1, false, { "", "" })
+			row = line_count + 1
+		else
+			row = 0
+		end
+		col = 0
+
+		-- Insert the delimiter
+		api.nvim_buf_set_lines(buffers.diff_buffer, row, row + 1, false, { delimiter, "" })
+
+		-- Check if the existing extmark is valid
+		local is_valid = stream_insert_extmark > 0
+		-- If the extmark is not valid, create a new one
+		if not is_valid then
+			stream_insert_extmark = api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, row + 1, 0, {})
+		else
+			-- Update the existing extmark
+			stream_insert_extmark = api.nvim_buf_set_extmark(
+				buffers.diff_buffer,
+				stream_insert_ns,
+				row + 1,
+				0,
+				{ id = stream_insert_extmark }
+			)
+		end
+		-- Set the cursor to the end of the buffer
+		local new_line_count = api.nvim_buf_line_count(buffers.diff_buffer)
+		api.nvim_win_set_cursor(0, { new_line_count, 0 })
 	end)
 end
 
@@ -175,8 +248,9 @@ function M.handle_anthropic_data(data_stream)
 				})
 				vim.schedule(M.process_tool_queue)
 			else
-				vim.notify("Failed to parse tool input JSON: " .. partial_json)
+				vim.print("Failed to parse tool input JSON: " .. partial_json)
 			end
+			M.print_user_delimiter()
 		end
 	else
 		vim.print("Failed to parse JSON: " .. data_stream)
@@ -193,8 +267,9 @@ function M.handle_openai_data(data_stream, event_state)
 		if content then
 			M.write_string_at_llmstream(content)
 		end
+	elseif data_stream:match("%[DONE%]") then
+		M.print_user_delimiter()
 	end
-	-- end
 end
 
 function M.process_tool_queue()
@@ -243,38 +318,24 @@ end
 local group = vim.api.nvim_create_augroup("FLATVIBE_AutoGroup", { clear = true })
 local active_job = nil
 
-function M.chat_with_buffer_and_diff()
-	local prompt, system_prompt = M.generate_prompt(true) -- Pass true to include diff buffer
-	prompt = vim.fn.strpart(prompt, -cfg.max_prompt_length)
-
+function M.chat_with_buffer()
 	if not cfg.current_model then
 		vim.notify("No model selected", vim.log.levels.ERROR)
 		return nil
 	end
 
+	local messages = M.generate_prompt()
 	stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, 0, 0, {})
 
 	local handler = cfg.current_model.model_type == "anthropic" and M.handle_anthropic_data or M.handle_openai_data
-	local args = generate_args(cfg.current_model, system_prompt, prompt)
+	local args = generate_args(cfg.current_model, nil, nil, messages)
 
 	return M.call_llm(args, handler)
 end
 
-function M.chat_with_buffer()
-	local prompt, system_prompt = M.generate_prompt()
-	prompt = vim.fn.strpart(prompt, -cfg.max_prompt_length)
-
-	if not cfg.current_model then
-		vim.notify("No model selected", vim.log.levels.ERROR)
-		return nil
-	end
-
-	stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, 0, 0, {})
-
-	local handler = cfg.current_model.model_type == "anthropic" and M.handle_anthropic_data or M.handle_openai_data
-	local args = generate_args(cfg.current_model, system_prompt, prompt)
-
-	return M.call_llm(args, handler)
+function M.chat_with_buffer_and_diff()
+	-- This function can now be identical to chat_with_buffer
+	return M.chat_with_buffer()
 end
 
 function M.call_llm(args, handler)
@@ -314,6 +375,7 @@ function M.call_llm(args, handler)
 		end,
 	})
 	vim.notify("requesting from LLM " .. cfg.current_model.model_type)
+	M.insert_assistant_delimiter()
 	active_job:start()
 
 	vim.api.nvim_create_autocmd("User", {

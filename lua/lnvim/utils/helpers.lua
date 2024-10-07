@@ -130,7 +130,6 @@ function M.get_files_for_prompt(selected_paths)
 		end
 	end
 	table.insert(all_contents, "")
-	-- Insert all contents into the current work buffer
 	all_contents = M.primitive.flatten(all_contents)
 	return all_contents
 end
