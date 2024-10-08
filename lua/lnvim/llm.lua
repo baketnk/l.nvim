@@ -212,9 +212,12 @@ function M.print_user_delimiter()
 				{ id = stream_insert_extmark }
 			)
 		end
-		-- Set the cursor to the end of the buffer
-		local new_line_count = api.nvim_buf_line_count(buffers.diff_buffer)
-		api.nvim_win_set_cursor(0, { new_line_count, 0 })
+		-- Check if the diff buffer is still the current buffer before moving the cursor
+        if api.nvim_get_current_buf() == buffers.diff_buffer then
+            -- Set the cursor to the end of the buffer
+            local new_line_count = api.nvim_buf_line_count(buffers.diff_buffer)
+            api.nvim_win_set_cursor(0, { new_line_count, 0 })
+        end
 	end)
 end
 

@@ -96,58 +96,59 @@ function M.select_model()
 end
 
 function M.apply_diff_to_buffer()
-	vim.notify("Entering apply_diff_to_buffer function", vim.log.levels.INFO)
-	-- Check if we're in the diff buffer
-	if vim.api.nvim_get_current_buf() ~= buffers.diff_buffer then
-		vim.notify("Not in diff buffer. Current buffer: " .. vim.api.nvim_get_current_buf(), vim.log.levels.WARN)
-		return
-	end
+    vim.notify("Entering apply_diff_to_buffer function", vim.log.levels.INFO)
+    
+    -- Check if we're in the diff buffer
+    if vim.api.nvim_get_current_buf() ~= buffers.diff_buffer then
+        vim.notify("Not in diff buffer. Current buffer: " .. vim.api.nvim_get_current_buf(), vim.log.levels.WARN)
+        return
+    end
 
-	-- Get the entire diff buffer content
-	-- Log the content of the diff buffer
-	local diff_content = table.concat(vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false), "\n")
-	vim.notify("Diff content:\n" .. diff_content, vim.log.levels.INFO)
+    -- Get the current highlighted codeblock
+    local lines = editor.get_current_codeblock_contents(buffers.diff_buffer)
+    if #lines == 0 then
+        vim.notify("No codeblock selected or empty codeblock", vim.log.levels.WARN)
+        return
+    end
 
-	-- Split the diff content into separate file diffs
-	local file_diffs = {}
-	local current_file = nil
-	for line in diff_content:gmatch("[^\r\n]+") do
-		if line:match("^diff %-%-git") then
-			if current_file then
-				table.insert(file_diffs, current_file)
-			end
-			current_file = { header = line, content = {} }
-		elseif current_file then
-			table.insert(current_file.content, line)
-		end
-	end
-	if current_file then
-		table.insert(file_diffs, current_file)
-	end
+    -- Create a temporary file for the diff
+    local temp_file = vim.fn.tempname()
+    vim.fn.writefile(lines, temp_file)
 
-	-- Apply diffs to each file
-	for _, file_diff in ipairs(file_diffs) do
-		local file_path = file_diff.header:match("b/(.+)$")
-		if file_path then
-			-- Open or focus the buffer for this file
-			local buf = vim.fn.bufnr(file_path, true)
-			if buf == -1 then
-				buf = vim.fn.bufadd(file_path)
-			end
-			vim.api.nvim_set_current_buf(buf)
+    -- Use git apply to apply the diff
+    local result = vim.fn.system("git apply --cached " .. vim.fn.shellescape(temp_file))
+    
+    if vim.v.shell_error ~= 0 then
+        vim.notify("Error applying diff: " .. result, vim.log.levels.ERROR)
+        return
+    end
 
-			-- Get the original content of the buffer
-			local original_lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    -- Get the list of changed files
+    local changed_files = vim.fn.systemlist("git diff --cached --name-only")
 
-			-- Apply the diff
-			local new_lines = diff_utils.applyDiff(original_lines, table.concat(file_diff.content, "\n"))
+    -- Apply changes to buffers
+    for _, file in ipairs(changed_files) do
+        local buf = vim.fn.bufnr(file, true)
+        if buf ~= -1 then
+            -- Read the updated content from git index
+            local updated_content = vim.fn.systemlist("git show :" .. vim.fn.shellescape(file))
+            
+            -- Update the buffer content
+            vim.api.nvim_buf_set_lines(buf, 0, -1, false, updated_content)
+            
+            vim.notify("Applied changes to " .. file, vim.log.levels.INFO)
+        else
+            vim.notify("Buffer not found for " .. file, vim.log.levels.WARN)
+        end
+    end
 
-			-- Replace the contents of the buffer
-			vim.api.nvim_buf_set_lines(buf, 0, -1, false, new_lines)
+    -- Clean up: unstage the changes from git index
+    vim.fn.system("git reset")
 
-			vim.notify("Diff applied to " .. file_path, vim.log.levels.INFO)
-		end
-	end
+    -- Remove the temporary file
+    vim.fn.delete(temp_file)
+
+    vim.notify("Diff applied successfully", vim.log.levels.INFO)
 end
 
 function M.shell_to_prompt()
