@@ -69,6 +69,13 @@ M.default_models = {
 		api_key = "",
 		use_toolcalling = false,
 	},
+  {
+		model_id = "x-ai/grok-2",
+		model_type = "openaicompat",
+		api_url = "https://openrouter.ai/api/v1/chat/completions",
+		api_key = "OPENROUTER_API_KEY",
+		use_toolcalling = false,
+	},
 }
 
 function M.setup(_opts)
