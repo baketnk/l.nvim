@@ -230,7 +230,7 @@ function M.setup(_opts)
 		M.show_drawer()
 	end
 
-	require("lnvim.chains")
+	require("lnvim.chains.chains")
 end
 
 return M

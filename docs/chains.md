@@ -45,5 +45,3 @@ Edit the `chains.lua` file using the `:LChainEdit` command. After making changes
 5. **Diff Generation:** A final LLM creates a unified diff of the changes.
 6. **Approval:** Review and approve the diff.
 7. **Apply Changes:** The diff is patched to your repository.
-
-

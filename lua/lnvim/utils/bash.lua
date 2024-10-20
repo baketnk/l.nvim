@@ -1,6 +1,5 @@
 local M = {}
 local Job = require("plenary.job")
-local vim = vim
 
 -- Execute a bash command
 -- command: The bash command to execute
