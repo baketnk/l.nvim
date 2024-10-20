@@ -8,7 +8,6 @@ local LLM = require("lnvim.llm")
 local Job = require("plenary.job")
 local diff_utils = require("lnvim.utils.diff")
 local LazyLoad = require("lnvim.utils.lazyload")
-local cfg = LazyLoad("lnvim.cfg")
 local LSP = require("lnvim.lsp")
 local telescope = require("telescope")
 local telescope_builtin = require("telescope.builtin")
@@ -17,6 +16,14 @@ local finders = require("telescope.finders")
 local conf = require("telescope.config").values
 local actions = require("telescope.actions")
 local action_state = require("telescope.actions.state")
+
+local function get_cfg()
+	return require("lnvim.cfg")
+end
+
+function M.debug_current_model()
+	vim.print(get_cfg().current_model)
+end
 
 function M.setup_filetype_ac()
 	local group = vim.api.nvim_create_augroup("LCodeBlocks", { clear = true })
@@ -34,6 +41,7 @@ function M.setup_filetype_ac()
 end
 
 function M.save_diff_buffer_contents()
+	local cfg = get_cfg()
 	if not cfg.llm_log_path then
 		return -- Skip saving if log path is not set
 	end
@@ -64,6 +72,7 @@ end
 
 function M.select_model()
 	local opts = {}
+	local cfg = get_cfg()
 	local models = cfg.models
 	local model_names = {}
 
@@ -85,6 +94,9 @@ function M.select_model()
 					local index = tonumber(selection[1]:match("^(%d+):"))
 					cfg.current_model = models[index]
 					vim.notify("Selected model: " .. cfg.current_model.model_id, vim.log.levels.INFO)
+					cfg.debug_current_model()
+					M.debug_current_model()
+					LLM.debug_current_model()
 				end
 			end)
 			return true
@@ -96,59 +108,59 @@ function M.select_model()
 end
 
 function M.apply_diff_to_buffer()
-    vim.notify("Entering apply_diff_to_buffer function", vim.log.levels.INFO)
-    
-    -- Check if we're in the diff buffer
-    if vim.api.nvim_get_current_buf() ~= buffers.diff_buffer then
-        vim.notify("Not in diff buffer. Current buffer: " .. vim.api.nvim_get_current_buf(), vim.log.levels.WARN)
-        return
-    end
+	vim.notify("Entering apply_diff_to_buffer function", vim.log.levels.INFO)
 
-    -- Get the current highlighted codeblock
-    local lines = editor.get_current_codeblock_contents(buffers.diff_buffer)
-    if #lines == 0 then
-        vim.notify("No codeblock selected or empty codeblock", vim.log.levels.WARN)
-        return
-    end
+	-- Check if we're in the diff buffer
+	if vim.api.nvim_get_current_buf() ~= buffers.diff_buffer then
+		vim.notify("Not in diff buffer. Current buffer: " .. vim.api.nvim_get_current_buf(), vim.log.levels.WARN)
+		return
+	end
 
-    -- Create a temporary file for the diff
-    local temp_file = vim.fn.tempname()
-    vim.fn.writefile(lines, temp_file)
+	-- Get the current highlighted codeblock
+	local lines = editor.get_current_codeblock_contents(buffers.diff_buffer)
+	if #lines == 0 then
+		vim.notify("No codeblock selected or empty codeblock", vim.log.levels.WARN)
+		return
+	end
 
-    -- Use git apply to apply the diff
-    local result = vim.fn.system("git apply --cached " .. vim.fn.shellescape(temp_file))
-    
-    if vim.v.shell_error ~= 0 then
-        vim.notify("Error applying diff: " .. result, vim.log.levels.ERROR)
-        return
-    end
+	-- Create a temporary file for the diff
+	local temp_file = vim.fn.tempname()
+	vim.fn.writefile(lines, temp_file)
 
-    -- Get the list of changed files
-    local changed_files = vim.fn.systemlist("git diff --cached --name-only")
+	-- Use git apply to apply the diff
+	local result = vim.fn.system("git apply --cached " .. vim.fn.shellescape(temp_file))
 
-    -- Apply changes to buffers
-    for _, file in ipairs(changed_files) do
-        local buf = vim.fn.bufnr(file, true)
-        if buf ~= -1 then
-            -- Read the updated content from git index
-            local updated_content = vim.fn.systemlist("git show :" .. vim.fn.shellescape(file))
-            
-            -- Update the buffer content
-            vim.api.nvim_buf_set_lines(buf, 0, -1, false, updated_content)
-            
-            vim.notify("Applied changes to " .. file, vim.log.levels.INFO)
-        else
-            vim.notify("Buffer not found for " .. file, vim.log.levels.WARN)
-        end
-    end
+	if vim.v.shell_error ~= 0 then
+		vim.notify("Error applying diff: " .. result, vim.log.levels.ERROR)
+		return
+	end
 
-    -- Clean up: unstage the changes from git index
-    vim.fn.system("git reset")
+	-- Get the list of changed files
+	local changed_files = vim.fn.systemlist("git diff --cached --name-only")
 
-    -- Remove the temporary file
-    vim.fn.delete(temp_file)
+	-- Apply changes to buffers
+	for _, file in ipairs(changed_files) do
+		local buf = vim.fn.bufnr(file, true)
+		if buf ~= -1 then
+			-- Read the updated content from git index
+			local updated_content = vim.fn.systemlist("git show :" .. vim.fn.shellescape(file))
 
-    vim.notify("Diff applied successfully", vim.log.levels.INFO)
+			-- Update the buffer content
+			vim.api.nvim_buf_set_lines(buf, 0, -1, false, updated_content)
+
+			vim.notify("Applied changes to " .. file, vim.log.levels.INFO)
+		else
+			vim.notify("Buffer not found for " .. file, vim.log.levels.WARN)
+		end
+	end
+
+	-- Clean up: unstage the changes from git index
+	vim.fn.system("git reset")
+
+	-- Remove the temporary file
+	vim.fn.delete(temp_file)
+
+	vim.notify("Diff applied successfully", vim.log.levels.INFO)
 end
 
 function M.shell_to_prompt()
@@ -354,7 +366,7 @@ function M.clear_buffers(which)
 		table.insert(buffers_to_clear, buffers.files_buffer)
 	end
 	if which == "all" or which == "p" then
-		table.insert(buffers_to_clear, buffers.work_buffer)
+		table.insert(buffers_to_clear, buffers.progress_buffer)
 	end
 
 	for _, buf in ipairs(buffers_to_clear) do
@@ -401,7 +413,15 @@ function M.decide_with_magic()
 	end
 end
 
+function M.enumerate_project_files()
+	-- Add the placeholder to the files buffer
+	vim.api.nvim_buf_set_lines(buffers.files_buffer, -1, -1, false, { "@project-file-list" })
+
+	vim.notify("Project file list placeholder added to the files buffer", vim.log.levels.INFO)
+end
+
 function M.generate_readme()
+	local cfg = get_cfg()
 	local lcfg = require("lnvim.cfg")
 	local keymaps = {}
 	-- Iterate through the M.make_plugKey calls in cfg.lua
@@ -488,52 +508,6 @@ require('lnvim').setup({
 	open_drawer_on_setup = true,
 })
 ```
-
-### Configuration Variables
-
-
-
-| Variable | Default Value |
-|----------|---------------|
-
-]]
-
-	for _, var in ipairs(config_vars) do
-		readme_content = readme_content .. "| " .. var.name .. " | " .. var.default .. "|" .. " |\n"
-	end
-
-	readme_content = readme_content
-		.. [[
-
-
-
-### Default Model Configuration
-
-
-
-| Model ID | Model Type | API URL | API Key | Use Toolcalling |
-|----------|------------|---------|---------|-----------------|
-
-]]
-
-	for _, model in ipairs(model_config) do
-		readme_content = readme_content
-			.. "| "
-			.. model.model_id
-			.. " | "
-			.. model.model_type
-			.. " | "
-			.. model.api_url
-			.. " | "
-			.. model.api_key
-			.. " | "
-			.. tostring(model.use_toolcalling)
-			.. " |\n"
-	end
-
-	readme_content = readme_content .. [[
-
-
 
 ## Keymappings
 

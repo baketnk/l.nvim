@@ -16,10 +16,6 @@ describe("basic nav", function()
 		cmd.decide_with_magic()
 		-- new L window is open with buffer
 		local buf = vim.api.nvim_get_current_buf()
-		assert(
-			string.match(vim.api.nvim_buf_get_name(buffers.work_buffer), constants.filetype_ext) ~= nil,
-			"lslop buf missing"
-		)
 		-- make sure its empty
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
 			"trollolol",
@@ -236,11 +232,11 @@ end)
 
 describe("promptmacro", function()
 	it("should execute PromptMacro command", function()
-		vim.api.nvim_buf_set_lines(buffers.work_buffer, 0, -1, false, {})
+		vim.api.nvim_buf_set_lines(buffers.diff_buffer, 0, -1, false, {})
 		-- Execute the PromptMacro command
 		cmd.execute_prompt_macro("tests/macro.text")
 		-- Check if the content is correctly added to the work buffer
-		local buffer_content = vim.api.nvim_buf_get_lines(buffers.work_buffer, 0, -1, false)
+		local buffer_content = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
 
 		-- The expected content should include the executed bash command output
 		local expected_content = {
@@ -309,7 +305,7 @@ describe("LSP introspection", function()
 
 		-- Initialize buffers
 		buffers.files_buffer = vim.api.nvim_create_buf(false, true)
-		buffers.work_buffer = vim.api.nvim_create_buf(false, true)
+		buffers.diff_buffer = vim.api.nvim_create_buf(false, true)
 	end)
 
 	it("should add LSP entry to files buffer and include it in generated prompt", function()

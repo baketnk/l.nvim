@@ -6,6 +6,10 @@ local action_state = require("telescope.actions.state")
 local buffers = require("lnvim.ui.buffers")
 
 function M.read_file_contents_into_markdown(file_path)
+	if file_path:match("^%s*$") then
+		return {} -- Return an empty table for blank lines
+	end
+
 	local file, err = io.open(file_path, "r")
 	if file then
 		local contents = { "", "```" .. file_path }
@@ -135,7 +139,7 @@ function M.get_files_for_prompt(selected_paths)
 end
 
 function M.select_files_or_folders()
-	if not M.work_buffer then
+	if not M.diff_buffer then
 		M.show_drawer()
 	end
 	local selected_paths = {}

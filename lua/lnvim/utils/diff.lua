@@ -1,65 +1,58 @@
 local M = {}
 
-function M.applyDiff(originalLines, diffText)
-	local result = {}
-	local currentLine = 1
-	local hunkStart, hunkEnd, hunkLines
+local function run_command(cmd)
+    local handle, err = io.popen(cmd)
+    if err then
+      vim.notify(err, vim.log.ERROR)
+    end
+    if not handle then
+      vim.notify("no file handle for "+cmd, vim.log.ERROR)
+      return nil
+    end
+    local result = handle:read("*a")
+    handle:close()
+    return result
+end
 
-	for line in diffText:gmatch("[^\r\n]+") do
-		-- Ignore file headers
-		if
-			line:match("^diff %-%-git")
-			or line:match("^index %x+%.%x+ %d+")
-			or line:match("^%-%-%- %S+")
-			or line:match("^%+%+%+ %S+")
-		then
-			-- Skip these lines
-		elseif line:match("^@@") then
-			-- Apply previous hunk if exists
-			if hunkLines then
-				for _, hunkLine in ipairs(hunkLines) do
-					table.insert(result, hunkLine)
-				end
-			end
+function M.applyDiff(originalContent, diffText)
+    -- Write original content to a temporary file
+    local orig_file = os.tmpname()
+    local diff_file = os.tmpname()
+    local f, err = io.open(orig_file, "w")
+    if err or not f then
+      vim.notify(vim.inspect(err), vim.log.ERROR)
+      return
+    end
+    f:write(originalContent)
+    f:close()
 
-			-- Parse new hunk header
-			hunkStart, hunkEnd = line:match("@@ %-(%d+),?%d*%s+%+(%d+)")
-			hunkStart, hunkEnd = tonumber(hunkStart), tonumber(hunkEnd)
+    -- Write diff to a temporary file
+    f, err = io.open(diff_file, "w")
+    if err or not f then
+      vim.notify(vim.inspect(err), vim.log.ERROR)
+      return
+    end
+    f:write(diffText)
+    f:close()
 
-			-- Copy lines before the hunk
-			while currentLine < hunkStart do
-				table.insert(result, originalLines[currentLine])
-				currentLine = currentLine + 1
-			end
+    -- Apply patch
+    local cmd = string.format("patch -u %s %s", orig_file, diff_file)
+    run_command(cmd)
 
-			hunkLines = {}
-		elseif line:sub(1, 1) == "+" then
-			-- Add new line
-			table.insert(hunkLines, line:sub(2))
-		elseif line:sub(1, 1) == "-" then
-			-- Skip removed line
-			currentLine = currentLine + 1
-		elseif line:sub(1, 1) == " " then
-			-- Keep unchanged line
-			table.insert(hunkLines, line:sub(2))
-			currentLine = currentLine + 1
-		end
-	end
+    -- Read patched content
+    f, err = io.open(orig_file, "r")
+    if err or not f then
+      vim.notify(vim.inspect(err), vim.log.ERROR)
+      return
+    end
+    local result = f:read("*all")
+    f:close()
 
-	-- Apply last hunk
-	if hunkLines then
-		for _, hunkLine in ipairs(hunkLines) do
-			table.insert(result, hunkLine)
-		end
-	end
+    -- Clean up temporary files
+    os.remove(orig_file)
+    os.remove(diff_file)
 
-	-- Copy remaining lines after the last hunk
-	while currentLine <= #originalLines do
-		table.insert(result, originalLines[currentLine])
-		currentLine = currentLine + 1
-	end
-
-	return result
+    return result
 end
 
 return M

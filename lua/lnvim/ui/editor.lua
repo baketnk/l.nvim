@@ -294,6 +294,32 @@ function M.highlight_extmarks(buf)
 	end
 end
 
+function M.toggle_section(label)
+	local buf = vim.api.nvim_get_current_buf()
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	local start_line, end_line = -1, -1
+
+	for i, line in ipairs(lines) do
+		if line:match(string.rep("-", 40) .. label .. string.rep("-", 40)) then
+			start_line = i
+			-- Find the end of this section
+			for j = i + 1, #lines do
+				if lines[j]:match("^%s*$") then
+					end_line = j
+					break
+				end
+			end
+			break
+		end
+	end
+
+	if start_line ~= -1 and end_line ~= -1 then
+		vim.cmd(start_line .. "," .. end_line .. "fold")
+	else
+		vim.notify("Section not found: " .. label, vim.log.levels.WARN)
+	end
+end
+
 function M.print_extmarks(buf)
 	buf = buf or vim.api.nvim_get_current_buf()
 	local extmarks = vim.api.nvim_buf_get_extmarks(buf, ns_id, 0, -1, { details = true })

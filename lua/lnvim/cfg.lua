@@ -7,6 +7,10 @@ local lcmd = require("lnvim.cmd")
 local buffers = require("lnvim.ui.buffers")
 -- local LLM = require("lnvim.llm")
 
+function M.debug_current_model()
+	vim.print(M.current_model)
+end
+
 function M.get_project_root()
 	local cwd = vim.fn.getcwd()
 	local git_dir = vim.fn.finddir(".git", cwd .. ";")
@@ -69,7 +73,28 @@ M.default_models = {
 		api_key = "",
 		use_toolcalling = false,
 	},
-  {
+	{
+		model_id = "o1-mini",
+		model_type = "openaicompat",
+		api_url = "https://openrouter.ai/api/v1/chat/completions",
+		api_key = "OPENROUTER_API_KEY",
+		use_toolcalling = false,
+	},
+	{
+		model_id = "o1-preview",
+		model_type = "openaicompat",
+		api_url = "https://openrouter.ai/api/v1/chat/completions",
+		api_key = "OPENROUTER_API_KEY",
+		use_toolcalling = false,
+	},
+	{
+		model_id = "gpt-4o-mini",
+		model_type = "openaicompat",
+		api_url = "https://openrouter.ai/api/v1/chat/completions",
+		api_key = "OPENROUTER_API_KEY",
+		use_toolcalling = false,
+	},
+	{
 		model_id = "x-ai/grok-2",
 		model_type = "openaicompat",
 		api_url = "https://openrouter.ai/api/v1/chat/completions",
@@ -157,13 +182,18 @@ function M.setup(_opts)
 	M.make_plugKey("YankCodeBlock", "n", "y", lcmd.yank_codeblock, { desc = "Yank code block" })
 	M.make_plugKey("SetSystemPrompt", "n", "s", lcmd.set_system_prompt, { desc = "Set system prompt" })
 	M.make_plugKey("SetPromptFile", "n", "f", lcmd.select_files_for_prompt, { desc = "Select prompt files" })
-	M.make_plugKey("SetPromptFileFromAll", "n", "F", lcmd.select_files_for_prompt, { desc = "Select prompt files" })
+	M.make_plugKey(
+		"EnumerateProjectFiles",
+		"n",
+		"F",
+		lcmd.enumerate_project_files,
+		{ desc = "Enumerate project files" }
+	)
 	M.make_plugKey("LspIntrospect", "n", "/", lcmd.lsp_introspect, { desc = "LSP Introspection" })
 	M.make_plugKey("Next", "n", "j", lcmd.next_magic, { desc = "Next code block" })
 	M.make_plugKey("Prev", "n", "k", lcmd.previous_magic, { desc = "Previous code block" })
 	M.make_plugKey("OpenClose", "n", ";", lcmd.open_close, { desc = "Toggle drawer" })
 	M.make_plugKey("Magic", "n", "l", lcmd.chat_with_magic, { desc = "Chat with LLM" })
-	M.make_plugKey("MagicWithDiff", "n", "L", lcmd.chat_with_magic_and_diff, { desc = "Chat with LLM including diff" })
 	M.make_plugKey("ReplaceFile", "n", "r", lcmd.replace_file_with_codeblock, { desc = "Replace file with code" })
 	M.make_plugKey("SelectModel", "n", "m", lcmd.select_model, { desc = "Select LLM model" })
 	M.make_plugKey("ClearAllBuffers", "n", "dg", function()
@@ -175,9 +205,6 @@ function M.setup(_opts)
 	M.make_plugKey("ClearFilesBuffer", "n", "df", function()
 		lcmd.clear_buffers("f")
 	end, { desc = "Clear files buffer" })
-	M.make_plugKey("ClearWorkBuffer", "n", "dp", function()
-		lcmd.clear_buffers("p")
-	end, { desc = "Clear work buffer" })
 	M.make_plugKey("FocusMain", "n", "i", lcmd.focus_main_window, { desc = "Focus main window" })
 	M.make_plugKey("ToggleToolUsage", "n", "t", require("lnvim.toolcall").tools_toggle, { desc = "Toggle tool usage" })
 	M.make_plugKey(
@@ -187,7 +214,6 @@ function M.setup(_opts)
 		lcmd.shell_to_prompt,
 		{ desc = "Run shell command and add output to prompt" }
 	)
-	M.make_plugKey("PromptMacro", "n", "q", lcmd.prompt_macro, { desc = "Execute Prompt Macro" })
 	M.make_plugKey("TriggerAutocomplete", "n", "c", function()
 		vim.schedule(lcmd.trigger_autocomplete)
 	end, { desc = "Trigger autocompletion" })
@@ -203,6 +229,8 @@ function M.setup(_opts)
 	if opts.open_drawer_on_setup then
 		M.show_drawer()
 	end
+
+	require("lnvim.chains")
 end
 
 return M

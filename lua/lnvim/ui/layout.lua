@@ -2,7 +2,10 @@ local M = {}
 local constants = require("lnvim.constants")
 local buffers = require("lnvim.ui.buffers")
 local LazyLoad = require("lnvim.utils.lazyload")
-local cfg = LazyLoad("lnvim.cfg")
+
+local function get_cfg()
+	return require("lnvim.cfg")
+end
 
 function M.create_layout()
 	local width = vim.o.columns
@@ -38,10 +41,22 @@ function M.create_layout()
 	layout.preamble = vim.api.nvim_get_current_win()
 	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buffers.preamble_buffer)
 
-	-- Create work window
+	-- create progress window
 	vim.cmd("split")
-	layout.work = vim.api.nvim_get_current_win()
-	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buffers.work_buffer)
+	layout.progress = vim.api.nvim_get_current_win()
+	vim.api.nvim_win_set_buf(layout.progress, buffers.progress_buffer)
+	vim.api.nvim_win_set_option(layout.progress, "wrap", true)
+	vim.api.nvim_win_set_option(layout.progress, "signcolumn", "no")
+	vim.api.nvim_win_set_option(layout.progress, "number", false)
+	vim.api.nvim_win_set_option(layout.progress, "relativenumber", false)
+	-- Initialize progress buffer
+	vim.api.nvim_buf_set_name(
+		buffers.progress_buffer,
+		"~" .. os.date("!%Y-%m-%d_%H-%M-%S_progress") .. "." .. constants.filetype_ext
+	)
+	vim.api.nvim_buf_set_lines(buffers.progress_buffer, 0, -1, false, { "Chain Execution Progress:" })
+	vim.api.nvim_win_set_option(layout.progress, "foldmethod", "manual")
+	vim.api.nvim_win_set_option(layout.progress, "foldlevel", 0)
 
 	vim.cmd("wincmd h")
 	vim.cmd("wincmd h")
@@ -59,10 +74,21 @@ function M.create_layout()
 	layout.diff = vim.fn.win_findbuf(buffers.diff_buffer)[1]
 	layout.files = vim.fn.win_findbuf(buffers.files_buffer)[1]
 	layout.preamble = vim.fn.win_findbuf(buffers.preamble_buffer)[1]
-	layout.work = vim.fn.win_findbuf(buffers.work_buffer)[1]
+	layout.progress = vim.fn.win_findbuf(buffers.progress_buffer)[1]
 	M.layout = layout
 
 	return layout
+end
+
+-- Function to log messages to the Progress buffer
+function M.log_progress(message)
+	local buf = buffers.progress_buffer
+	if not vim.api.nvim_buf_is_valid(buf) then
+		return
+	end
+	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	table.insert(lines, message)
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 end
 
 function M.get_layout()
@@ -88,8 +114,9 @@ local function init_buffer(buf)
 end
 
 function M.show_drawer()
+	local cfg = get_cfg()
 	-- Set up buffers
-	buffers.work_buffer = init_buffer(buffers.work_buffer)
+	buffers.progress_buffer = init_buffer(buffers.progress_buffer)
 	buffers.preamble_buffer = init_buffer(buffers.preamble_buffer)
 	buffers.diff_buffer = init_buffer(buffers.diff_buffer)
 	buffers.files_buffer = init_buffer(buffers.files_buffer)
@@ -97,11 +124,6 @@ function M.show_drawer()
 	local layout = M.create_layout()
 	-- Mount the layout
 
-	-- Set up buffer options
-	vim.api.nvim_buf_set_name(
-		buffers.work_buffer,
-		"~" .. os.date("!%Y-%m-%d_%H-%M-%S_prompt") .. "." .. constants.filetype_ext
-	)
 	vim.api.nvim_buf_set_name(buffers.preamble_buffer, cfg.project_lnvim_dir .. "/preamble.txt")
 	local preamble_file = io.open(cfg.project_lnvim_dir .. "/preamble.txt", "r")
 	if preamble_file then

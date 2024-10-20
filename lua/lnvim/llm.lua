@@ -3,15 +3,21 @@ local helpers = require("lnvim.utils.helpers")
 local primitive = require("lnvim.utils.primitive")
 local toolcall = require("lnvim.toolcall")
 -- local cfg = require("lnvim.cfg") -- CYCLIC DO NOT UNCOMMENT
-local LazyLoad = require("lnvim.utils.lazyload")
-local cfg = LazyLoad("lnvim.cfg")
 local LSP = require("lnvim.lsp")
+local file_tree = require("lnvim.utils.file_tree")
 
-M = {}
+local M = {}
 local api = vim.api
 local Job = require("plenary.job")
 local stream_insert_ns = api.nvim_create_namespace("lnvim_model_stream")
 local stream_insert_extmark = 0
+local function get_cfg()
+	return require("lnvim.cfg")
+end
+
+function M.debug_current_model()
+	vim.print(get_cfg().current_model)
+end
 
 function M.generate_prompt()
 	local file_contents = {}
@@ -24,6 +30,12 @@ function M.generate_prompt()
 			if lsp_content then
 				table.insert(file_contents, lsp_content)
 			end
+		elseif path == "@project-file-list" then
+			-- Generate and insert the file tree
+			local project_files = file_tree.get_project_files()
+			local tree = file_tree.generate_file_tree(project_files)
+			local tree_string = "Project File Structure:\n" .. file_tree.tree_to_string(tree)
+			table.insert(file_contents, tree_string)
 		else
 			-- Handle regular file
 			local contents = helpers.read_file_contents_into_markdown(path)
@@ -98,6 +110,17 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
 		end
 	end
 
+	-- Check if the API URL is an OpenRouter URL
+	if model.api_url:match("^https://openrouter%.ai") then
+		-- Add HTTP Referer header
+		table.insert(args, "-H")
+		table.insert(args, "HTTP-Referer: https://github.com/baketnk/l.nvim")
+
+		-- Add X-Title header
+		table.insert(args, "-H")
+		table.insert(args, "X-Title: l.nvim")
+	end
+
 	local data = {
 		model = model.model_id,
 		messages = messages or {
@@ -114,7 +137,11 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
 		table.insert(args, "-H")
 		table.insert(args, "anthropic-version: 2023-06-01")
 	else
-		data.max_tokens = M.max_tokens or 1024
+		if model.model_id:match("^o1") then
+			data.max_tokens = 64000
+		else
+			data.max_tokens = M.max_tokens or 4096
+		end
 	end
 
 	if model.use_toolcalling and toolcall.tools_enabled then
@@ -151,11 +178,19 @@ function M.write_string_at_cursor(str)
 	end)
 end
 
-function M.insert_assistant_delimiter()
-	local delimiter = string.rep("-", 40) .. "assistant" .. os.date(" %Y-%m-%d %H:%M:%S ") .. string.rep("-", 40)
+function M.insert_assistant_delimiter(label)
+	local _label = label
+	if not label then
+		_label = "assistant"
+	end
+	local delimiter = string.rep("-", 40) .. _label .. os.date(" %Y-%m-%d %H:%M:%S ") .. string.rep("-", 40)
 	vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "", delimiter, "" })
 	local line_count = vim.api.nvim_buf_line_count(buffers.diff_buffer)
 	stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, line_count - 1, 0, {})
+end
+
+function M.append_diff(diff_buffer, diff_text, label)
+	local separator = string.rep("-", 40) .. label .. string.rep("-", 40)
 end
 
 function M.write_string_at_llmstream(str)
@@ -213,11 +248,11 @@ function M.print_user_delimiter()
 			)
 		end
 		-- Check if the diff buffer is still the current buffer before moving the cursor
-        if api.nvim_get_current_buf() == buffers.diff_buffer then
-            -- Set the cursor to the end of the buffer
-            local new_line_count = api.nvim_buf_line_count(buffers.diff_buffer)
-            api.nvim_win_set_cursor(0, { new_line_count, 0 })
-        end
+		if api.nvim_get_current_buf() == buffers.diff_buffer then
+			-- Set the cursor to the end of the buffer
+			local new_line_count = api.nvim_buf_line_count(buffers.diff_buffer)
+			api.nvim_win_set_cursor(0, { new_line_count, 0 })
+		end
 	end)
 end
 
@@ -229,7 +264,11 @@ function M.handle_anthropic_data(data_stream)
 	local json_ok, json = pcall(vim.json.decode, data_stream)
 	if json_ok then
 		if json.type == "error" then
-			M.write_string_at_llmstream(vim.inspect(json.error))
+			local error_message = "Anthropic API Error: " .. vim.inspect(json.error)
+			M.write_string_at_llmstream(error_message)
+			vim.schedule(function()
+				vim.notify(error_message, vim.log.levels.ERROR)
+			end)
 		elseif json.type == "content_block_start" then
 			if json.content_block and json.content_block.type == "tool_use" then
 				tool_name = json.content_block.name or tool_name or "Unknown"
@@ -258,7 +297,11 @@ function M.handle_anthropic_data(data_stream)
 			M.print_user_delimiter()
 		end
 	else
-		vim.print("Failed to parse JSON: " .. data_stream)
+		local error_message = "Failed to parse JSON from Anthropic API: " .. data_stream
+		M.write_string_at_llmstream(error_message)
+		vim.schedule(function()
+			vim.notify(error_message, vim.log.levels.ERROR)
+		end)
 	end
 end
 
@@ -323,7 +366,18 @@ end
 local group = vim.api.nvim_create_augroup("FLATVIBE_AutoGroup", { clear = true })
 local active_job = nil
 
+local function get_debug_log_path()
+	local home = os.getenv("HOME")
+	local lnvim_dir = home .. "/.lnvim"
+
+	-- Ensure the .lnvim directory exists
+	os.execute("mkdir -p " .. lnvim_dir)
+
+	return lnvim_dir .. "/debug_log.txt"
+end
+
 function M.chat_with_buffer()
+	local cfg = get_cfg()
 	if not cfg.current_model then
 		vim.notify("No model selected", vim.log.levels.ERROR)
 		return nil
@@ -344,10 +398,22 @@ function M.chat_with_buffer_and_diff()
 end
 
 function M.call_llm(args, handler)
+	local cfg = get_cfg()
 	local curr_event_state = nil
 
 	tool_name = ""
+	local debug_log_path = get_debug_log_path()
+	local debug_file = io.open(debug_log_path, "w") -- Open in write mode to overwrite existing content
 	local function parse_and_call(line)
+		if debug_file then
+			debug_file:write(line .. "\n")
+			debug_file:flush() -- Ensure it's written immediately
+		end
+		local or_processing = line:match("OPENROUTER PROCESSING")
+		if or_processing then
+			M.write_string_at_llmstream(line .. "\n")
+			return
+		end
 		local event = line:match("^event: (.+)$")
 		if event then
 			curr_event_state = event
@@ -371,15 +437,37 @@ function M.call_llm(args, handler)
 			parse_and_call(out)
 		end,
 		on_stderr = function(_, err)
-			vim.print("Error in LLM call: " .. err, vim.log.levels.ERROR)
+			vim.schedule(function()
+				if debug_file then
+					debug_file:write("Error: " .. err .. "\n")
+					debug_file:flush()
+				end
+				M.write_string_at_llmstream(err)
+			end)
 			-- active_job.shutdown()
 			--
 			vim.schedule(function()
 				vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "Error: " .. err })
 			end)
 		end,
+		on_exit = function(j, return_code)
+			if return_code ~= 0 then
+				local error_message = "LLM call failed with exit code: " .. return_code
+				vim.schedule(function()
+					M.write_string_at_llmstream(error_message)
+				end)
+			end
+			if debug_file then
+				debug_file:close()
+				debug_file = nil
+			end
+		end,
 	})
-	vim.notify("requesting from LLM " .. cfg.current_model.model_type)
+	if debug_file then
+		debug_file:write("Full curl command: curl " .. table.concat(args, " ") .. "\n\n")
+		debug_file:flush()
+	end
+	vim.notify("requesting from LLM " .. cfg.current_model.model_type .. " " .. cfg.current_model.model_id)
 	M.insert_assistant_delimiter()
 	active_job:start()
 
@@ -391,11 +479,131 @@ function M.call_llm(args, handler)
 				active_job:shutdown()
 				active_job = nil
 			end
+			if debug_file then
+				debug_file:close()
+				debug_file = nil
+			end
 		end,
 	})
 
 	vim.api.nvim_set_keymap("n", "<Esc>", ":doautocmd User FLATVIBE_Escape<CR>", { noremap = true, silent = true })
 	return active_job
+end
+
+-- Function to call an LLM model
+-- name: Identifier for the model
+-- prompt: The input prompt to send to the model
+-- callback: Function to call with the response
+-- error_callback: Function to call with error messages
+function M.call_model(name, prompt, callback, error_callback)
+	local cfg = get_cfg()
+	-- Find the model configuration by name
+	local model = nil
+	for _, m in ipairs(cfg.models) do
+		if m.model_id == name then
+			model = m
+			break
+		end
+	end
+
+	if not model then
+		error_callback("Model not found: " .. name)
+		return
+	end
+
+	-- Prepare the curl command or API call based on model_type
+	local curl_command = "curl"
+	local args = {}
+
+	-- Common headers
+	table.insert(args, "-s") -- Silent mode
+	table.insert(args, "-X")
+	table.insert(args, "POST")
+	table.insert(args, "-H")
+	table.insert(args, "Content-Type: application/json")
+
+	-- Authorization
+	if model.api_key and model.api_key ~= "" then
+		local auth_header = ""
+		if model.model_type == "anthropic" then
+			auth_header = "x-api-key: " .. vim.env[model.api_key]
+		else
+			auth_header = "Authorization: Bearer " .. vim.env[model.api_key]
+		end
+		table.insert(args, "-H")
+		table.insert(args, auth_header)
+	end
+
+	-- Handle OpenRouter-specific headers
+	if model.api_url:match("^https://openrouter%.ai") then
+		table.insert(args, "-H")
+		table.insert(args, "HTTP-Referer: https://github.com/baketnk/l.nvim")
+		table.insert(args, "-H")
+		table.insert(args, "X-Title: l.nvim")
+	end
+
+	-- Prepare the JSON payload
+	local payload = {}
+	if model.model_type == "anthropic" then
+		payload = {
+			model = model.model_id,
+			messages = {
+				{ role = "system", content = "You are an assistant." },
+				{ role = "user", content = prompt },
+			},
+			max_tokens = 5000,
+		}
+		table.insert(args, "-H")
+		table.insert(args, "anthropic-version: 2023-06-01")
+	else
+		payload = {
+			model = model.model_id,
+			messages = {
+				{ role = "system", content = "You are an assistant." },
+				{ role = "user", content = prompt },
+			},
+			max_tokens = 4096,
+			stream = false,
+		}
+		if model.model_id:match("^o1") then
+			payload.max_tokens = 64000
+		end
+	end
+
+	-- Toolcalling support
+	if model.use_toolcalling and require("lnvim.toolcall").tools_enabled then
+		payload.tools = {}
+		for _, tool in pairs(require("lnvim.toolcall").tools_available) do
+			table.insert(payload.tools, {
+				name = tool.name,
+				description = tool.description,
+				input_schema = vim.deepcopy(tool.input_schema, true),
+			})
+		end
+	end
+
+	table.insert(args, "-d")
+	table.insert(args, vim.fn.json_encode(payload))
+	table.insert(args, model.api_url)
+
+	-- Execute the curl command
+	Job:new({
+		command = curl_command,
+		args = args,
+		on_stdout = function(_, line)
+			if line ~= "" then
+				callback(line)
+			end
+		end,
+		on_stderr = function(_, err)
+			error_callback(err)
+		end,
+		on_exit = function(j, return_val)
+			if return_val ~= 0 then
+				error_callback("LLM call failed with exit code: " .. return_val)
+			end
+		end,
+	}):start()
 end
 
 return M

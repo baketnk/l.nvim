@@ -56,6 +56,10 @@ require('lnvim').setup({
 | claude-3-opus-20240229 | anthropic | https://api.anthropic.com/v1/messages | ANTHROPIC_API_KEY | false |
 | hermes-3-llama-3.1-405b-fp8 | openaicompat | https://api.lambdalabs.com/v1/chat/completions | LAMBDA_API_KEY | false |
 | hermes3 | openaicompat | http://localhost:11434/v1/chat/completions |  | false |
+| o1-mini | openaicompat | https://openrouter.ai/api/v1/chat/completions | OPENROUTER_API_KEY | false |
+| o1-preview | openaicompat | https://openrouter.ai/api/v1/chat/completions | OPENROUTER_API_KEY | false |
+| gpt-4o-mini | openaicompat | https://openrouter.ai/api/v1/chat/completions | OPENROUTER_API_KEY | false |
+| x-ai/grok-2 | openaicompat | https://openrouter.ai/api/v1/chat/completions | OPENROUTER_API_KEY | false |
 
 
 
@@ -64,18 +68,15 @@ require('lnvim').setup({
 - `<Leader>;y`: Yank code block
 - `<Leader>;s`: Set system prompt
 - `<Leader>;f`: Select prompt files
-- `<Leader>;F`: Select prompt files
 - `<Leader>;/`: LSP Introspection
 - `<Leader>;j`: Next code block
 - `<Leader>;k`: Previous code block
 - `<Leader>;;`: Toggle drawer
 - `<Leader>;l`: Chat with LLM
-- `<Leader>;L`: Chat with LLM including diff
 - `<Leader>;r`: Replace file with code
 - `<Leader>;m`: Select LLM model
 - `<Leader>;i`: Focus main window
 - `<Leader>;t`: Toggle tool usage
-- `<Leader>;q`: Execute Prompt Macro
 - `<Leader>;a`: Apply diff to buffer
 - `<Leader>;R`: Generate README.md
 
