@@ -1,11 +1,11 @@
 -- File: lua/lnvim/chain_executor.lua
 
 local M = {}
-local chains = require("lnvim.chains")
+local chains = require("lnvim.chains.chains")
 local llm = require("lnvim.llm")
 local Job = require("plenary.job")
 local telescope = require("telescope.builtin")
-local vim = vim
+local modal = require("lnvim.ui.modal")
 
 -- Utility function for variable substitution
 local function substitute_variables(template, variables)
@@ -17,13 +17,19 @@ end
 
 -- Handler for user input steps
 local function handle_user_input(step, state, callback, error_callback)
-	vim.ui.input({ prompt = step.prompt }, function(input)
-		if input == nil then
-			error_callback("User canceled the input.")
-			return
+	modal.modal_input({
+		prompt = step.prompt,
+		default = "",
+		input_height = 5,
+	}, function(input)
+		if input and #input > 0 then
+			state[step.variable] = input
+			callback()
+		else
+			error_callback("No input provided.")
 		end
-		state[step.variable] = input
-		callback()
+	end, function()
+		error_callback("User canceled the input.")
 	end)
 end
 

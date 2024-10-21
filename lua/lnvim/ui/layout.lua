@@ -1,8 +1,7 @@
 local M = {}
 local constants = require("lnvim.constants")
 local buffers = require("lnvim.ui.buffers")
-local LazyLoad = require("lnvim.utils.lazyload")
-
+local state = require("lnvim.state")
 local function get_cfg()
 	return require("lnvim.cfg")
 end
@@ -12,83 +11,48 @@ function M.create_layout()
 	local height = vim.o.lines
 
 	-- Calculate dimensions
-	local col1_width = math.floor(width * 0.4)
-	local col2_width = math.floor(width * 0.35)
-	local col3_width = math.floor(width * 0.25)
+	local col1_width = math.floor(width * 0.6)
+	local col2_width = width - col1_width
 
-	local row1_height = math.floor(height * 0.3)
-	local row2_height = 8
-	local row3_height = height - row1_height - row2_height
 	local layout = {}
 
-	-- Function to find or create a window for a specific buffer
-	layout.main = vim.api.nvim_get_current_win()
-
 	-- Create column layout
+	layout.main = vim.api.nvim_get_current_win()
 	vim.cmd("vsplit")
-	vim.cmd("wincmd L")
 	layout.diff = vim.api.nvim_get_current_win()
 
-	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buffers.diff_buffer)
-	vim.cmd("vsplit")
-	layout.files = vim.api.nvim_get_current_win()
-
 	-- Set buffers to windows
-	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buffers.files_buffer)
+	vim.api.nvim_win_set_buf(layout.diff, buffers.diff_buffer)
 
-	-- Create preamble window
+	-- Create summary window
 	vim.cmd("split")
-	layout.preamble = vim.api.nvim_get_current_win()
-	vim.api.nvim_win_set_buf(vim.api.nvim_get_current_win(), buffers.preamble_buffer)
+	layout.summary = vim.api.nvim_get_current_win()
+	buffers.summary_buffer = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_win_set_buf(layout.summary, buffers.summary_buffer)
 
-	-- create progress window
-	vim.cmd("split")
-	layout.progress = vim.api.nvim_get_current_win()
-	vim.api.nvim_win_set_buf(layout.progress, buffers.progress_buffer)
-	vim.api.nvim_win_set_option(layout.progress, "wrap", true)
-	vim.api.nvim_win_set_option(layout.progress, "signcolumn", "no")
-	vim.api.nvim_win_set_option(layout.progress, "number", false)
-	vim.api.nvim_win_set_option(layout.progress, "relativenumber", false)
-	-- Initialize progress buffer
-	vim.api.nvim_buf_set_name(
-		buffers.progress_buffer,
-		"~" .. os.date("!%Y-%m-%d_%H-%M-%S_progress") .. "." .. constants.filetype_ext
-	)
-	vim.api.nvim_buf_set_lines(buffers.progress_buffer, 0, -1, false, { "Chain Execution Progress:" })
-	vim.api.nvim_win_set_option(layout.progress, "foldmethod", "manual")
-	vim.api.nvim_win_set_option(layout.progress, "foldlevel", 0)
-
-	vim.cmd("wincmd h")
-	vim.cmd("wincmd h")
 	-- Set window sizes
-	vim.cmd("vertical resize " .. col1_width)
-	vim.cmd("wincmd l")
 	vim.cmd("vertical resize " .. col2_width)
-	vim.cmd("wincmd l")
-	vim.cmd("vertical resize " .. col3_width)
-	vim.cmd("resize " .. row1_height)
-	vim.cmd("wincmd j")
-	vim.cmd("resize " .. row2_height)
-	-- Update layout table with new window IDs
-	layout.main = vim.fn.win_findbuf(vim.api.nvim_get_current_buf())[1]
-	layout.diff = vim.fn.win_findbuf(buffers.diff_buffer)[1]
-	layout.files = vim.fn.win_findbuf(buffers.files_buffer)[1]
-	layout.preamble = vim.fn.win_findbuf(buffers.preamble_buffer)[1]
-	layout.progress = vim.fn.win_findbuf(buffers.progress_buffer)[1]
+	vim.cmd("resize " .. math.floor(5))
+
 	M.layout = layout
+
+	vim.api.nvim_create_autocmd("BufEnter", {
+		buffer = buffers.diff_buffer,
+		callback = function()
+			vim.schedule(M.ensure_correct_diff_buffer)
+		end,
+	})
 
 	return layout
 end
 
--- Function to log messages to the Progress buffer
-function M.log_progress(message)
-	local buf = buffers.progress_buffer
-	if not vim.api.nvim_buf_is_valid(buf) then
-		return
+function M.update_summary()
+	if M.layout and vim.api.nvim_win_is_valid(M.layout.summary) then
+		local summary = state.get_summary()
+		vim.api.nvim_buf_set_option(buffers.summary_buffer, "modifiable", true)
+		vim.api.nvim_buf_set_lines(buffers.summary_buffer, 0, -1, false, vim.split(summary, "\n"))
+		vim.api.nvim_buf_set_option(buffers.summary_buffer, "modifiable", false)
 	end
-	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-	table.insert(lines, message)
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 end
 
 function M.get_layout()
@@ -98,7 +62,7 @@ end
 function M.close_layout()
 	pcall(vim.api.nvim_win_close, M.layout.diff, true)
 	pcall(vim.api.nvim_win_close, M.layout.files, true)
-	pcall(vim.api.nvim_win_close, M.layout.work, true)
+	pcall(vim.api.nvim_win_close, M.layout.progress, true)
 	pcall(vim.api.nvim_win_close, M.layout.preamble, true)
 	M.layout = nil
 end
@@ -113,25 +77,31 @@ local function init_buffer(buf)
 	return vim.api.nvim_create_buf(false, true)
 end
 
+function M.ensure_correct_diff_buffer()
+	if M.layout and vim.api.nvim_win_is_valid(M.layout.diff) then
+		local current_buf = vim.api.nvim_win_get_buf(M.layout.diff)
+		if current_buf ~= buffers.diff_buffer then
+			-- Switch the diff window back to the correct buffer
+			vim.api.nvim_win_set_buf(M.layout.diff, buffers.diff_buffer)
+
+			-- Move the user to the main window
+			vim.api.nvim_set_current_win(M.layout.main)
+
+			-- Switch to the intended buffer in the main window
+			vim.api.nvim_win_set_buf(M.layout.main, current_buf)
+
+			-- Notify the user
+			vim.notify("Switched to the intended buffer in the main window", vim.log.levels.INFO)
+		end
+	end
+end
+
 function M.show_drawer()
 	local cfg = get_cfg()
 	-- Set up buffers
-	buffers.progress_buffer = init_buffer(buffers.progress_buffer)
-	buffers.preamble_buffer = init_buffer(buffers.preamble_buffer)
 	buffers.diff_buffer = init_buffer(buffers.diff_buffer)
-	buffers.files_buffer = init_buffer(buffers.files_buffer)
-	buffers.new_version_buffer = init_buffer(buffers.new_version_buffer)
 	local layout = M.create_layout()
 	-- Mount the layout
-
-	vim.api.nvim_buf_set_name(buffers.preamble_buffer, cfg.project_lnvim_dir .. "/preamble.txt")
-	local preamble_file = io.open(cfg.project_lnvim_dir .. "/preamble.txt", "r")
-	if preamble_file then
-		local preamble_content = preamble_file:read("*a")
-		preamble_file:close()
-		vim.api.nvim_buf_set_lines(buffers.preamble_buffer, 0, -1, false, vim.split(preamble_content, "\n"))
-	end
-	vim.api.nvim_win_set_option(layout.preamble, "wrap", true)
 
 	vim.api.nvim_buf_set_name(
 		buffers.diff_buffer,
@@ -140,7 +110,6 @@ function M.show_drawer()
 	-- diff buffer opts
 	vim.api.nvim_win_set_option(layout.diff, "wrap", true)
 
-	vim.api.nvim_win_set_option(layout.files, "wrap", true)
 	-- Focus on the prompt window
 	vim.api.nvim_set_current_win(layout.diff)
 	if
@@ -149,6 +118,7 @@ function M.show_drawer()
 	then
 		require("lnvim.llm").print_user_delimiter()
 	end
+	M.update_summary()
 end
 
 return M

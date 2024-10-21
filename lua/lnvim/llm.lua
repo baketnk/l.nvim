@@ -2,26 +2,23 @@ local buffers = require("lnvim.ui.buffers")
 local helpers = require("lnvim.utils.helpers")
 local primitive = require("lnvim.utils.primitive")
 local toolcall = require("lnvim.toolcall")
--- local cfg = require("lnvim.cfg") -- CYCLIC DO NOT UNCOMMENT
 local LSP = require("lnvim.lsp")
 local file_tree = require("lnvim.utils.file_tree")
+local state = require("lnvim.state")
 
 local M = {}
 local api = vim.api
 local Job = require("plenary.job")
 local stream_insert_ns = api.nvim_create_namespace("lnvim_model_stream")
 local stream_insert_extmark = 0
-local function get_cfg()
-	return require("lnvim.cfg")
-end
 
 function M.debug_current_model()
-	vim.print(get_cfg().current_model)
+	vim.print(state.current_model)
 end
 
 function M.generate_prompt()
 	local file_contents = {}
-	local file_paths = vim.api.nvim_buf_get_lines(buffers.files_buffer, 0, -1, false)
+	local file_paths = state.files
 
 	for _, path in ipairs(file_paths) do
 		if path:match("^@lsp:") then
@@ -43,7 +40,7 @@ function M.generate_prompt()
 		end
 	end
 
-	local preamble_text = vim.api.nvim_buf_get_lines(buffers.preamble_buffer, 0, -1, false)
+	local system_prompt_text = vim.split(state.system_prompt, "\n")
 	local diff_buffer_content = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
 
 	local file_contents_text = ""
@@ -51,11 +48,12 @@ function M.generate_prompt()
 		file_contents_text = table.concat(primitive.flatten(file_contents), "\n\n") .. "\n\n"
 	end
 
-	local preamble_text_formatted = #preamble_text > 0 and "NOTES:\n" .. table.concat(preamble_text, "\n") .. "\n\n"
+	local system_prompt_text_formatted = #system_prompt_text > 0
+			and "NOTES:\n" .. table.concat(system_prompt_text, "\n") .. "\n\n"
 		or ""
 
 	local messages = {}
-	local current_message = { role = "system", content = preamble_text_formatted .. file_contents_text }
+	local current_message = { role = "system", content = system_prompt_text_formatted .. file_contents_text }
 	local current_role = nil
 	local current_content = ""
 
@@ -377,17 +375,16 @@ local function get_debug_log_path()
 end
 
 function M.chat_with_buffer()
-	local cfg = get_cfg()
-	if not cfg.current_model then
+	if not state.current_model then
 		vim.notify("No model selected", vim.log.levels.ERROR)
 		return nil
 	end
 
 	local messages = M.generate_prompt()
 	stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, 0, 0, {})
-	-- vim.print(vim.inspect(cfg.current_model))
-	local handler = cfg.current_model.model_type == "anthropic" and M.handle_anthropic_data or M.handle_openai_data
-	local args = generate_args(cfg.current_model, nil, nil, messages)
+	-- vim.print(vim.inspect(state.current_model))
+	local handler = state.current_model.model_type == "anthropic" and M.handle_anthropic_data or M.handle_openai_data
+	local args = generate_args(state.current_model, nil, nil, messages)
 
 	return M.call_llm(args, handler)
 end
@@ -398,7 +395,6 @@ function M.chat_with_buffer_and_diff()
 end
 
 function M.call_llm(args, handler)
-	local cfg = get_cfg()
 	local curr_event_state = nil
 
 	tool_name = ""
@@ -450,24 +446,12 @@ function M.call_llm(args, handler)
 				vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "Error: " .. err })
 			end)
 		end,
-		on_exit = function(j, return_code)
-			if return_code ~= 0 then
-				local error_message = "LLM call failed with exit code: " .. return_code
-				vim.schedule(function()
-					M.write_string_at_llmstream(error_message)
-				end)
-			end
-			if debug_file then
-				debug_file:close()
-				debug_file = nil
-			end
-		end,
 	})
 	if debug_file then
 		debug_file:write("Full curl command: curl " .. table.concat(args, " ") .. "\n\n")
 		debug_file:flush()
 	end
-	vim.notify("requesting from LLM " .. cfg.current_model.model_type .. " " .. cfg.current_model.model_id)
+	vim.notify("requesting from LLM " .. state.current_model.model_type .. " " .. state.current_model.model_id)
 	M.insert_assistant_delimiter()
 	active_job:start()
 
@@ -475,14 +459,18 @@ function M.call_llm(args, handler)
 		group = group,
 		pattern = "FLATVIBE_Escape",
 		callback = function()
-			if active_job then
-				active_job:shutdown()
-				active_job = nil
-			end
-			if debug_file then
-				debug_file:close()
-				debug_file = nil
-			end
+			pcall(function()
+				if active_job then
+					local temp_job = active_job
+					active_job = nil
+					temp_job:shutdown()
+				end
+				if debug_file then
+					local temp_file = debug_file
+					debug_file = nil
+					temp_file:close()
+				end
+			end)
 		end,
 	})
 
@@ -496,10 +484,9 @@ end
 -- callback: Function to call with the response
 -- error_callback: Function to call with error messages
 function M.call_model(name, prompt, callback, error_callback)
-	local cfg = get_cfg()
 	-- Find the model configuration by name
 	local model = nil
-	for _, m in ipairs(cfg.models) do
+	for _, m in ipairs(state.models) do
 		if m.model_id == name then
 			model = m
 			break

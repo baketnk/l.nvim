@@ -5,6 +5,7 @@ end
 local constants = require("lnvim.constants")
 local lcmd = require("lnvim.cmd")
 local buffers = require("lnvim.ui.buffers")
+local state = require("lnvim.state")
 -- local LLM = require("lnvim.llm")
 
 function M.debug_current_model()
@@ -24,8 +25,8 @@ end
 function M.make_plugKey(name, mode, keys, func, opts)
 	local full_name = constants.plugin_name .. name
 	vim.keymap.set(mode, "<Plug>" .. full_name .. ";", func, opts)
-	if M.keymap_prefix ~= "" then
-		vim.keymap.set(mode, M.keymap_prefix .. keys, func, opts)
+	if state.keymap_prefix ~= "" then
+		vim.keymap.set(mode, state.keymap_prefix .. keys, func, opts)
 	end
 end
 
@@ -107,18 +108,20 @@ function M.setup(_opts)
 	local opts = _opts or {}
 	M.is_loaded = true
 
-	M.models = {}
-	for _, model in ipairs(opts.models or M.default_models) do
-		table.insert(M.models, validate_model(model))
-	end
-	-- Add these new tables to the M table in cfg.lua
+	state.status = "Loading"
 
-	M.autocomplete = opts.autocomplete or {
+	-- Populate state instead of M
+	state.models = {}
+	for _, model in ipairs(opts.models or M.default_models) do
+		table.insert(state.models, validate_model(model))
+	end
+
+	state.autocomplete = opts.autocomplete or {
 		max_tokens = 300,
 		temperature = 0.5,
 	}
 
-	M.autocomplete_model = opts.autocomplete_model
+	state.autocomplete_model = opts.autocomplete_model
 		or {
 			model_id = "deepseek-coder-v2:16b",
 			model_type = "openai",
@@ -126,26 +129,27 @@ function M.setup(_opts)
 			-- api_key = "",
 		}
 
-	M.current_model = M.models[1]
-	M.max_prompt_length = opts.max_prompt_length or 16000
+	state.current_model = state.models[1]
+	state.max_prompt_length = opts.max_prompt_length or 16000
 
-	M.default_prompt_path = opts.default_prompt_path or os.getenv("HOME") .. "/.local/share/lnvim/"
-	M.project_root = M.get_project_root()
-	M.project_lnvim_dir = M.project_root .. "/.lnvim"
-	if vim.fn.isdirectory(M.project_lnvim_dir) == 0 then
-		vim.fn.mkdir(M.project_lnvim_dir, "p")
-	end
-	-- Copy the preamble file to the .lnvim folder
-	local global_preamble_path = M.default_prompt_path .. "/preamble.txt"
-	local project_preamble_path = M.project_lnvim_dir .. "/preamble.txt"
-	if vim.fn.filereadable(global_preamble_path) == 1 and vim.fn.filereadable(project_preamble_path) == 0 then
-		vim.fn.system("cp " .. global_preamble_path .. " " .. project_preamble_path)
+	state.default_prompt_path = opts.default_prompt_path or os.getenv("HOME") .. "/.local/share/lnvim/"
+	state.project_root = M.get_project_root()
+	state.project_lnvim_dir = state.project_root .. "/.lnvim"
+	if vim.fn.isdirectory(state.project_lnvim_dir) == 0 then
+		vim.fn.mkdir(state.project_lnvim_dir, "p")
 	end
 
-	M.llm_log_path = M.project_lnvim_dir .. "/logs"
+	-- Copy the system_prompt file to the .lnvim folder
+	local global_system_prompt_path = state.default_prompt_path .. "/system_prompt.txt"
+	local project_system_prompt_path = state.project_lnvim_dir .. "/system_prompt.txt"
+	if vim.fn.filereadable(global_system_prompt_path) == 1 and vim.fn.filereadable(project_system_prompt_path) == 0 then
+		vim.fn.system("cp " .. global_system_prompt_path .. " " .. project_system_prompt_path)
+	end
+
+	state.llm_log_path = state.project_lnvim_dir .. "/logs"
 
 	-- Check for .gitignore file and add .lnvim directory to it
-	local gitignore_path = M.project_root .. "/.gitignore"
+	local gitignore_path = state.project_root .. "/.gitignore"
 	if vim.fn.filereadable(gitignore_path) == 1 then
 		local gitignore_content = vim.fn.readfile(gitignore_path)
 		local lnvim_entry = ".lnvim/"
@@ -155,8 +159,8 @@ function M.setup(_opts)
 		end
 	end
 
-	M.keymap_prefix = opts.keymap_prefix or "<Leader>;"
-	M.mark = "T"
+	state.keymap_prefix = opts.keymap_prefix or "<Leader>;"
+	state.mark = "T"
 
 	vim.g.markdown_fenced_languages = {
 		"html",
@@ -193,7 +197,7 @@ function M.setup(_opts)
 	M.make_plugKey("Next", "n", "j", lcmd.next_magic, { desc = "Next code block" })
 	M.make_plugKey("Prev", "n", "k", lcmd.previous_magic, { desc = "Previous code block" })
 	M.make_plugKey("OpenClose", "n", ";", lcmd.open_close, { desc = "Toggle drawer" })
-	M.make_plugKey("Magic", "n", "l", lcmd.chat_with_magic, { desc = "Chat with LLM" })
+	M.make_plugKey("LLMChat", "n", "l", lcmd.chat_with_magic, { desc = "Chat with LLM" })
 	M.make_plugKey("ReplaceFile", "n", "r", lcmd.replace_file_with_codeblock, { desc = "Replace file with code" })
 	M.make_plugKey("SelectModel", "n", "m", lcmd.select_model, { desc = "Select LLM model" })
 	M.make_plugKey("ClearAllBuffers", "n", "dg", function()
@@ -202,7 +206,7 @@ function M.setup(_opts)
 	M.make_plugKey("ClearDiffBuffer", "n", "dd", function()
 		lcmd.clear_buffers("d")
 	end, { desc = "Clear diff buffer" })
-	M.make_plugKey("ClearFilesBuffer", "n", "df", function()
+	M.make_plugKey("ClearFilesList", "n", "df", function()
 		lcmd.clear_buffers("f")
 	end, { desc = "Clear files buffer" })
 	M.make_plugKey("FocusMain", "n", "i", lcmd.focus_main_window, { desc = "Focus main window" })
@@ -231,6 +235,15 @@ function M.setup(_opts)
 	end
 
 	require("lnvim.chains.chains")
+	vim.api.nvim_create_user_command("TestModal", function()
+		require("lnvim.ui.modal").modal_input({ prompt = "Test Modal:" }, function(input)
+			print("You entered: " .. input)
+		end, function()
+			print("Cancelled")
+		end)
+	end, {})
+
+	state.status = "Idle"
 end
 
 return M

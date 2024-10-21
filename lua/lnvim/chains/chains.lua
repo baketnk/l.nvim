@@ -1,13 +1,18 @@
 -- File: lua/lnvim/chains.lua
 
 local M = {}
-local telescope = require("telescope.builtin")
 local actions = require("telescope.actions")
 local action_state = require("telescope.actions.state")
+local pickers = require("telescope.pickers")
+local finders = require("telescope.finders")
 local user_interactions = require("lnvim.user_interactions")
 
+local conf = require("telescope.config").values
+
+local user_config_path = vim.fn.stdpath("config") .. "/lua/lnvim/user_chains.lua"
+
 -- Define the chain configurations
-M.chains = {
+local example_chains = {
 	-- Example: Default Chain
 	default_chain = {
 		name = "Default Workflow",
@@ -108,16 +113,17 @@ end
 
 -- Function to list and select a chain
 function M.select_and_execute_chain()
-	local chain_executor = require("lnvim.chain_executor")
+	local chain_executor = require("lnvim.chains.chain_executor")
 	local chain_names = {}
 	for key, chain in pairs(M.chains) do
 		table.insert(chain_names, { key = key, name = chain.name, description = chain.description })
 	end
 
-	telescope.pickers
-		.new({}, {
+	local opts = {}
+	pickers
+		.new(opts, {
 			prompt_title = "Select a Chain to Execute",
-			finder = require("telescope.finders").new_table({
+			finder = finders.new_table({
 				results = chain_names,
 				entry_maker = function(entry)
 					return {
@@ -127,7 +133,7 @@ function M.select_and_execute_chain()
 					}
 				end,
 			}),
-			sorter = require("telescope.config").values.generic_sorter({}),
+			sorter = conf.generic_sorter(opts),
 			attach_mappings = function(prompt_bufnr, map)
 				actions.select_default:replace(function()
 					actions.close(prompt_bufnr)
@@ -148,15 +154,62 @@ function M.select_and_execute_chain()
 		:find()
 end
 
+-- Function to load user's chain configurations
+local function load_user_chains()
+	local f = io.open(user_config_path, "r")
+	if f then
+		local content = f:read("*all")
+		f:close()
+		if content and #content > 0 then
+			local user_chains = loadstring(content)()
+			if user_chains then
+				return user_chains
+			end
+		end
+	end
+	return nil
+end
+
+local function save_example_chain()
+	-- Ensure the directory exists
+	local dir = vim.fn.fnamemodify(user_config_path, ":h")
+	vim.fn.mkdir(dir, "p")
+	local f, err = io.open(user_config_path, "w")
+	if f then
+		f:write("return " .. vim.inspect(example_chains))
+		f:close()
+		vim.notify("Example chain configuration saved to " .. user_config_path, vim.log.levels.INFO)
+		return true
+	else
+		vim.print(vim.inspect(err))
+		vim.notify("Failed to save example chain configuration", vim.log.levels.ERROR)
+		return false
+	end
+end
+
+M.chains = load_user_chains() or {}
+if not next(M.chains) then
+	if save_example_chain() then
+		M.chains = example_chains
+	end
+end
+
 function M.edit_chain_config()
-	local config_path = vim.fn.stdpath("config") .. "/lua/lnvim/chains.lua"
-	vim.cmd("edit " .. config_path)
+	if not vim.uv.fs_stat(user_config_path) then
+		-- File doesn't exist, create it with example chains
+		save_example_chain()
+	end
+	vim.cmd("edit " .. user_config_path)
 end
 
 -- Function to reload the chain configurations
 function M.reload_chains()
-	package.loaded["lnvim.chains"] = nil
-	chains = require("lnvim.chains")
+	M.chains = load_user_chains() or {}
+	if not next(M.chains) then
+		if save_example_chain() then
+			M.chains = example_chains
+		end
+	end
 	vim.notify("Chain configurations reloaded.", vim.log.levels.INFO)
 end
 

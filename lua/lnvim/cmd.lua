@@ -16,14 +16,8 @@ local finders = require("telescope.finders")
 local conf = require("telescope.config").values
 local actions = require("telescope.actions")
 local action_state = require("telescope.actions.state")
-
-local function get_cfg()
-	return require("lnvim.cfg")
-end
-
-function M.debug_current_model()
-	vim.print(get_cfg().current_model)
-end
+local modal = require("lnvim.ui.modal")
+local state = require("lnvim.state")
 
 function M.setup_filetype_ac()
 	local group = vim.api.nvim_create_augroup("LCodeBlocks", { clear = true })
@@ -41,8 +35,7 @@ function M.setup_filetype_ac()
 end
 
 function M.save_diff_buffer_contents()
-	local cfg = get_cfg()
-	if not cfg.llm_log_path then
+	if not state.llm_log_path then
 		return -- Skip saving if log path is not set
 	end
 
@@ -52,7 +45,7 @@ function M.save_diff_buffer_contents()
 	end
 
 	local timestamp = os.date("!%Y-%m-%dT%H-%M-%S") -- ISO 8601 format
-	local filename = string.format("%s/diff_%s.%s", cfg.llm_log_path, timestamp, constants.filetype_ext)
+	local filename = string.format("%s/diff_%s.%s", state.llm_log_path, timestamp, constants.filetype_ext)
 
 	-- Ensure the target directory exists
 	local dir = vim.fn.fnamemodify(filename, ":h")
@@ -72,8 +65,7 @@ end
 
 function M.select_model()
 	local opts = {}
-	local cfg = get_cfg()
-	local models = cfg.models
+	local models = state.models
 	local model_names = {}
 
 	for i, model in ipairs(models) do
@@ -92,11 +84,8 @@ function M.select_model()
 				local selection = action_state.get_selected_entry()
 				if selection then
 					local index = tonumber(selection[1]:match("^(%d+):"))
-					cfg.current_model = models[index]
-					vim.notify("Selected model: " .. cfg.current_model.model_id, vim.log.levels.INFO)
-					cfg.debug_current_model()
-					M.debug_current_model()
-					LLM.debug_current_model()
+					state.current_model = models[index]
+					vim.notify("Selected model: " .. state.current_model.model_id, vim.log.levels.INFO)
 				end
 			end)
 			return true
@@ -260,11 +249,13 @@ function M.execute_prompt_macro(file_path)
 	vim.notify("Macro content added to diff buffer", vim.log.levels.INFO)
 end
 
-function M.select_all_files_for_prompt()
-	return helpers.select_files_for_prompt(true, true)
-end
 function M.select_files_for_prompt()
-	return helpers.select_files_for_prompt(false, false)
+	local function on_select(selected_files)
+		state.update_files(selected_files)
+		layout.update_summary()
+	end
+
+	return helpers.select_files_for_prompt(false, false, on_select)
 end
 
 function M.yank_codeblock()
@@ -273,7 +264,7 @@ end
 
 function M.paste_codeblock(buf)
 	local lines = editor.get_current_codeblock_contents(buf)
-	editor.paste_to_mark(M.cfg.mark, lines)
+	editor.paste_to_mark(state.paste_mark, lines)
 end
 
 function M.chat_with_magic()
@@ -284,24 +275,10 @@ function M.chat_with_magic_and_diff()
 	return LLM.chat_with_buffer_and_diff()
 end
 
-function M.set_system_prompt(prompt_text)
-	local sp = prompt_text
-	if not sp then
-		local file_path = vim.fn.input({
-			prompt = "system prompt file",
-			completion = "file",
-		})
-		local f, err = io.open(file_path)
-		if err then
-			vim.notify(err, vim.log.levels.ERROR)
-			return nil
-		end
-		if not f then
-			return nil
-		end
-		sp = f:read("*a")
-	end
-	LLM.system_prompt = sp
+function M.set_system_prompt()
+	modal.modal_input({ prompt = "Edit System Prompt:", default = state.system_prompt }, function(input)
+		state.system_prompt = input
+	end)
 end
 
 function M.next_magic()
@@ -314,7 +291,7 @@ end
 
 function M.open_close()
 	local l = layout.get_layout()
-	if l and vim.api.nvim_win_is_valid(l.work) then
+	if l and vim.api.nvim_win_is_valid(l.diff) then
 		layout.close_layout()
 	else
 		layout.show_drawer()
@@ -414,15 +391,13 @@ function M.decide_with_magic()
 end
 
 function M.enumerate_project_files()
-	-- Add the placeholder to the files buffer
-	vim.api.nvim_buf_set_lines(buffers.files_buffer, -1, -1, false, { "@project-file-list" })
-
+	state.update_files({ "@project-file-list" })
 	vim.notify("Project file list placeholder added to the files buffer", vim.log.levels.INFO)
 end
 
 function M.generate_readme()
-	local cfg = get_cfg()
 	local lcfg = require("lnvim.cfg")
+	local cfg = lcfg
 	local keymaps = {}
 	-- Iterate through the M.make_plugKey calls in cfg.lua
 	for _, v in pairs(lcfg) do
