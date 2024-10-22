@@ -340,10 +340,7 @@ function M.clear_buffers(which)
 		M.save_diff_buffer_contents()
 	end
 	if which == "all" or which == "f" then
-		table.insert(buffers_to_clear, buffers.files_buffer)
-	end
-	if which == "all" or which == "p" then
-		table.insert(buffers_to_clear, buffers.progress_buffer)
+		state.files = {}
 	end
 
 	for _, buf in ipairs(buffers_to_clear) do
@@ -391,8 +388,24 @@ function M.decide_with_magic()
 end
 
 function M.enumerate_project_files()
-	state.update_files({ "@project-file-list" })
-	vim.notify("Project file list placeholder added to the files buffer", vim.log.levels.INFO)
+	local project_file_list = "@project-file-list"
+	local files = state.files
+
+	-- Check if the project file list is already in the state
+	-- tbl_contains returns true
+	local has_list_special = vim.tbl_contains(files, project_file_list)
+
+	if has_list_special then
+		-- If it's present, remove it
+	else
+		-- If it's not present, add it
+		table.insert(files, project_file_list)
+		vim.notify("Project file list placeholder added to the files buffer", vim.log.levels.INFO)
+	end
+
+	-- Update the state and refresh the summary
+	state.files = files
+	layout.update_summary()
 end
 
 function M.generate_readme()

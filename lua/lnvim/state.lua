@@ -26,6 +26,7 @@ local update_triggers = {
 	"current_model",
 }
 
+-- DO NOT CALL FROM OUTSIDE THE MODEL. THIS IS CALLED WHEN UPDATING CERTAIN TRIGGER KEYS.
 local function update_summary()
 	local layout = require("lnvim.ui.layout")
 	if layout.get_layout() then
