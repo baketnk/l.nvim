@@ -4,6 +4,7 @@ local telescope = require("telescope.builtin")
 local actions = require("telescope.actions")
 local action_state = require("telescope.actions.state")
 local buffers = require("lnvim.ui.buffers")
+local state = require("lnvim.state")
 
 function M.read_file_contents_into_markdown(file_path)
 	if file_path:match("^%s*$") then
@@ -37,7 +38,7 @@ function M.read_file_contents(file_path)
 end
 
 function M.select_files_for_prompt(hidden, no_ignore)
-	local existing_paths = vim.api.nvim_buf_get_lines(buffers.files_buffer, 0, -1, false)
+	local existing_paths = state.files
 	local selected_paths = {}
 
 	local opts = {
@@ -91,25 +92,26 @@ function M.add_prompt_files(new_paths, existing_paths)
 	end
 
 	-- Add new paths if they don't already exist
+	local new_count = 0
 	for _, path in ipairs(new_paths) do
 		if not path_set[path] then
+			new_count = new_count + 1
 			path_set[path] = true
 			table.insert(updated_paths, path)
 		end
 	end
 
-	-- Update the files_buffer with the new list
-	vim.api.nvim_buf_set_lines(buffers.files_buffer, 0, -1, false, updated_paths)
-	vim.notify("Files added to prompt list", vim.log.levels.INFO)
+	state.files = updated_paths
+	vim.notify("" .. new_count .. " files added to prompt list", vim.log.levels.INFO)
 end
 
 function M.set_prompt_files(selected_paths)
-	local existing_paths = vim.api.nvim_buf_get_lines(buffers.files_buffer, 0, -1, false)
+	local existing_paths = state.files
 	M.add_prompt_files(selected_paths, existing_paths)
 end
 
 function M.get_files_for_prompt(selected_paths)
-	selected_paths = selected_paths or vim.api.nvim_buf_get_lines(buffers.files_buffer, 0, -1, false)
+	selected_paths = selected_paths or state.files
 	if not selected_paths or #selected_paths == 0 then
 		vim.notify("nothing selected", vim.log.levels.INFO)
 		return nil
