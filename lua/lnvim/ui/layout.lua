@@ -61,9 +61,7 @@ end
 
 function M.close_layout()
 	pcall(vim.api.nvim_win_close, M.layout.diff, true)
-	pcall(vim.api.nvim_win_close, M.layout.files, true)
-	pcall(vim.api.nvim_win_close, M.layout.progress, true)
-	pcall(vim.api.nvim_win_close, M.layout.preamble, true)
+	pcall(vim.api.nvim_win_close, M.layout.summary, true)
 	M.layout = nil
 end
 function M.focus_drawer()
