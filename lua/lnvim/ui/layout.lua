@@ -39,7 +39,9 @@ function M.create_layout()
 	vim.api.nvim_create_autocmd("BufEnter", {
 		buffer = buffers.diff_buffer,
 		callback = function()
-			vim.schedule(M.ensure_correct_diff_buffer)
+			vim.schedule(function()
+				pcall(M.ensure_correct_diff_buffer)
+			end)
 		end,
 	})
 
@@ -47,12 +49,14 @@ function M.create_layout()
 end
 
 function M.update_summary()
-	if M.layout and vim.api.nvim_win_is_valid(M.layout.summary) then
-		local summary = state.get_summary()
-		vim.api.nvim_buf_set_option(buffers.summary_buffer, "modifiable", true)
-		vim.api.nvim_buf_set_lines(buffers.summary_buffer, 0, -1, false, vim.split(summary, "\n"))
-		vim.api.nvim_buf_set_option(buffers.summary_buffer, "modifiable", false)
-	end
+	vim.schedule(function()
+		if M.layout and vim.api.nvim_win_is_valid(M.layout.summary) then
+			local summary = state.get_summary()
+			vim.api.nvim_buf_set_option(buffers.summary_buffer, "modifiable", true)
+			vim.api.nvim_buf_set_lines(buffers.summary_buffer, 0, -1, false, vim.split(summary, "\n"))
+			vim.api.nvim_buf_set_option(buffers.summary_buffer, "modifiable", false)
+		end
+	end)
 end
 
 function M.get_layout()

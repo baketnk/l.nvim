@@ -47,6 +47,13 @@ end
 
 M.default_models = {
 	{
+		model_id = "claude-3-5-sonnet-latest",
+		model_type = "anthropic",
+		api_url = "https://api.anthropic.com/v1/messages",
+		api_key = "ANTHROPIC_API_KEY",
+		use_toolcalling = false,
+	},
+	{
 		model_id = "claude-3-5-sonnet-20240620",
 		model_type = "anthropic",
 		api_url = "https://api.anthropic.com/v1/messages",
@@ -106,6 +113,13 @@ M.default_models = {
 
 function M.setup(_opts)
 	local opts = _opts or {}
+
+	if not opts.disable_lualine and pcall(require, "lualine") then
+		require("lualine").setup({
+			sections = { lualine_z = { require("lnvim.ui.lualine").lnvim_status } },
+		})
+	end
+
 	M.is_loaded = true
 
 	state.status = "Loading"
@@ -142,7 +156,12 @@ function M.setup(_opts)
 	-- Copy the system_prompt file to the .lnvim folder
 	local global_system_prompt_path = state.default_prompt_path .. "/system_prompt.txt"
 	local project_system_prompt_path = state.project_lnvim_dir .. "/system_prompt.txt"
-	if vim.fn.filereadable(global_system_prompt_path) == 1 and vim.fn.filereadable(project_system_prompt_path) == 0 then
+	if vim.fn.filereadable(global_system_prompt_path) == 0 then
+		vim.fn.mkdir(state.default_prompt_path, "p")
+		vim.fn.writefile({ "You are a helpful software engineering assistant." }, global_system_prompt_path)
+	end
+
+	if vim.fn.filereadable(project_system_prompt_path) == 0 then
 		vim.fn.system("cp " .. global_system_prompt_path .. " " .. project_system_prompt_path)
 	end
 
@@ -159,6 +178,10 @@ function M.setup(_opts)
 		end
 	end
 
+	-- load the system prompt from global or proj
+	local system_prompt_content = vim.fn.readfile(project_system_prompt_path)
+	state.project_system_prompt_path = project_system_prompt_path
+	state.system_prompt = system_prompt_content
 	state.keymap_prefix = opts.keymap_prefix or "<Leader>;"
 	state.mark = "T"
 
@@ -199,6 +222,14 @@ function M.setup(_opts)
 	M.make_plugKey("OpenClose", "n", ";", lcmd.open_close, { desc = "Toggle drawer" })
 	M.make_plugKey("LLMChat", "n", "l", lcmd.chat_with_magic, { desc = "Chat with LLM" })
 	M.make_plugKey("ReplaceFile", "n", "r", lcmd.replace_file_with_codeblock, { desc = "Replace file with code" })
+	M.make_plugKey("SelectToPrompt", "v", "p", lcmd.selection_to_prompt, { desc = "copy selection to end of prompt" })
+	M.make_plugKey(
+		"SelectToPromptWrap",
+		"v",
+		"P",
+		lcmd.selection_to_prompt_wrapped,
+		{ desc = "copy selection to end of prompt in codeblock" }
+	)
 	M.make_plugKey("SelectModel", "n", "m", lcmd.select_model, { desc = "Select LLM model" })
 	M.make_plugKey("ClearAllBuffers", "n", "dg", function()
 		lcmd.clear_buffers("all")
@@ -218,9 +249,23 @@ function M.setup(_opts)
 		lcmd.shell_to_prompt,
 		{ desc = "Run shell command and add output to prompt" }
 	)
-	M.make_plugKey("TriggerAutocomplete", "n", "c", function()
+
+	vim.keymap.set({ "n", "i" }, "<S-C-Space>", function()
 		vim.schedule(lcmd.trigger_autocomplete)
 	end, { desc = "Trigger autocompletion" })
+
+	vim.keymap.set("i", "<C-w>", function()
+		require("lnvim.autocomplete").complete_word()
+	end, { desc = "Complete current word" })
+
+	vim.keymap.set("i", "<C-l>", function()
+		require("lnvim.autocomplete").complete_line()
+	end, { desc = "Complete current line" })
+
+	vim.keymap.set("i", "<C-f>", function()
+		require("lnvim.autocomplete").complete_full()
+	end, { desc = "Complete using full generated text" })
+
 	M.make_plugKey("ApplyDiff", "n", "a", lcmd.apply_diff_to_buffer, { desc = "Apply diff to buffer" })
 	M.make_plugKey(
 		"ShellToPrompt",

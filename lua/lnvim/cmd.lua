@@ -277,8 +277,50 @@ end
 
 function M.set_system_prompt()
 	modal.modal_input({ prompt = "Edit System Prompt:", default = state.system_prompt }, function(input)
+		if type(input) ~= "table" then
+			input = { input }
+		end
 		state.system_prompt = input
+		vim.fn.writefile(input, state.project_system_prompt_filepath)
 	end)
+end
+
+function M.selection_to_prompt()
+	local _, start_line, _, _ = vim.fn.getpos("'<")
+	local _, end_line, _, _ = vim.fn.getpos("'>")
+	local lines = vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
+
+	-- Get the current contents of the diff buffer
+	local diff_buffer_lines = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
+
+	-- Append the selected lines to the diff buffer, adding a newline if necessary
+	if #diff_buffer_lines > 0 and diff_buffer_lines[#diff_buffer_lines] ~= "" then
+		table.insert(diff_buffer_lines, "")
+	end
+	vim.list_extend(diff_buffer_lines, lines)
+
+	-- Update the diff buffer with the new contents
+	vim.api.nvim_buf_set_lines(buffers.diff_buffer, 0, -1, false, diff_buffer_lines)
+end
+
+function M.selection_to_prompt_wrapped()
+	local _, start_line, _, _ = vim.fn.getpos("'<")
+	local _, end_line, _, _ = vim.fn.getpos("'>")
+	local lines = vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
+
+	-- Get the current contents of the diff buffer
+	local diff_buffer_lines = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
+
+	-- Append the selected lines to the diff buffer, wrapping them in a markdown codeblock
+	if #diff_buffer_lines > 0 and diff_buffer_lines[#diff_buffer_lines] ~= "" then
+		table.insert(diff_buffer_lines, "")
+	end
+	table.insert(diff_buffer_lines, "```")
+	vim.list_extend(diff_buffer_lines, lines)
+	table.insert(diff_buffer_lines, "```")
+
+	-- Update the diff buffer with the new contents
+	vim.api.nvim_buf_set_lines(buffers.diff_buffer, 0, -1, false, diff_buffer_lines)
 end
 
 function M.next_magic()

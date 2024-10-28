@@ -48,7 +48,10 @@ end
 function M.modal_input(opts, on_confirm, on_cancel)
 	opts = opts or {}
 	local prompt = opts.prompt or "Enter input:"
-	local default = opts.default or ""
+	local default = opts.default or { "" }
+	if type(default) == "string" then
+		default = { default }
+	end
 	local input_height = opts.input_height or 5
 
 	local width = math.min(80, vim.api.nvim_get_option("columns"))
@@ -84,7 +87,7 @@ function M.modal_input(opts, on_confirm, on_cancel)
 	api.nvim_win_set_option(input_win, "cursorline", true)
 
 	-- Add default text to input buffer
-	api.nvim_buf_set_lines(input_buf, 0, -1, false, { default })
+	api.nvim_buf_set_lines(input_buf, 0, -1, false, default)
 
 	-- Set cursor position
 	api.nvim_win_set_cursor(input_win, { 1, #default })

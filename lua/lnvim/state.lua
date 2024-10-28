@@ -8,7 +8,6 @@ local _state = {
 	models = {},
 	llm_log_path = nil,
 	paste_mark = nil,
-	-- Add these new fields
 	autocomplete = {},
 	autocomplete_model = {},
 	max_prompt_length = nil,
@@ -32,6 +31,11 @@ local function update_summary()
 	if layout.get_layout() then
 		layout.update_summary()
 	end
+	vim.schedule(function()
+		pcall(function()
+			require("lualine").refresh()
+		end)
+	end)
 end
 
 local state_proxy = {}
@@ -63,8 +67,12 @@ function M.get_summary()
 		end
 	end
 
-	local system_prompt_preview = _state.system_prompt:sub(1, 50) .. (_state.system_prompt:len() > 50 and "..." or "")
-
+	local system_prompt_preview = ""
+	if _state.system_prompt then
+		vim.print(vim.inspect(_state.system_prompt))
+		system_prompt_preview = table.concat(_state.system_prompt, "\n")
+		system_prompt_preview = system_prompt_preview:sub(1, 50) .. (system_prompt_preview:len() > 50 and "..." or "")
+	end
 	local model_info = _state.current_model and _state.current_model.model_id or "No model selected"
 
 	return string.format(

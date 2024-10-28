@@ -281,6 +281,7 @@ function M.handle_anthropic_data(data_stream)
 				M.write_string_at_llmstream(json.delta.text)
 			end
 		elseif json.type == "content_block_stop" then
+			state.status = "Idle"
 			local tool_input_ok, tool_input = pcall(vim.json.decode, partial_json)
 			if tool_input_ok then
 				M.write_string_at_llmstream("Arguments: " .. vim.inspect(tool_input) .. "\n")
@@ -314,6 +315,7 @@ function M.handle_openai_data(data_stream, event_state)
 			M.write_string_at_llmstream(content)
 		end
 	elseif data_stream:match("%[DONE%]") then
+		state.status = "Idle"
 		M.print_user_delimiter()
 	end
 end
@@ -380,6 +382,8 @@ function M.chat_with_buffer()
 		return nil
 	end
 
+	state.status = "LLM Wait"
+
 	local messages = M.generate_prompt()
 	stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, 0, 0, {})
 	-- vim.print(vim.inspect(state.current_model))
@@ -425,15 +429,23 @@ function M.call_llm(args, handler)
 		active_job:shutdown()
 		active_job = nil
 	end
+	local first_run = true
 	-- vim.print("Full curl command: curl " .. table.concat(args, " "))
 	active_job = Job:new({
 		command = "curl",
 		args = args,
 		on_stdout = function(_, out)
+			if first_run then
+				vim.schedule(function()
+					state.status = "LLM Stream"
+					first_run = false
+				end)
+			end
 			parse_and_call(out)
 		end,
 		on_stderr = function(_, err)
 			vim.schedule(function()
+				state.status = "LLM Error"
 				if debug_file then
 					debug_file:write("Error: " .. err .. "\n")
 					debug_file:flush()
