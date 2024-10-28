@@ -40,7 +40,6 @@ function M.generate_prompt()
 		end
 	end
 
-	local system_prompt_text = vim.split(state.system_prompt, "\n")
 	local diff_buffer_content = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
 
 	local file_contents_text = ""
@@ -48,9 +47,7 @@ function M.generate_prompt()
 		file_contents_text = table.concat(primitive.flatten(file_contents), "\n\n") .. "\n\n"
 	end
 
-	local system_prompt_text_formatted = #system_prompt_text > 0
-			and "NOTES:\n" .. table.concat(system_prompt_text, "\n") .. "\n\n"
-		or ""
+	local system_prompt_text_formatted = table.concat(state.system_prompt, "\n") .. "\n"
 
 	local messages = {}
 	local current_message = { role = "system", content = system_prompt_text_formatted .. file_contents_text }
@@ -119,6 +116,9 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
 		table.insert(args, "X-Title: l.nvim")
 	end
 
+	if type(system_prompt) == "table" then
+		system_prompt = table.concat(system_prompt, "\n")
+	end
 	local data = {
 		model = model.model_id,
 		messages = messages or {
