@@ -69,7 +69,6 @@ function M.get_summary()
 
 	local system_prompt_preview = ""
 	if _state.system_prompt then
-		vim.print(vim.inspect(_state.system_prompt))
 		system_prompt_preview = table.concat(_state.system_prompt, "\n")
 		system_prompt_preview = system_prompt_preview:sub(1, 50) .. (system_prompt_preview:len() > 50 and "..." or "")
 	end
