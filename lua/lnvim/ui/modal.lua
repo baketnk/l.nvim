@@ -134,4 +134,65 @@ function M.modal_input(opts, on_confirm, on_cancel)
 	vim.cmd("startinsert!")
 end
 
+function M.stream_window(opts)
+	opts = opts or {}
+	local width = opts.width or math.min(120, vim.api.nvim_get_option("columns"))
+	local height = opts.height or math.floor(vim.api.nvim_get_option("lines") * 0.8)
+
+	-- Create buffer and window
+	local buf, win_opts = create_centered_float(width, height)
+	local win = api.nvim_open_win(buf, true, win_opts)
+
+	-- Set buffer options
+	api.nvim_buf_set_option(buf, "buftype", "nofile")
+	api.nvim_buf_set_option(buf, "bufhidden", "wipe")
+	api.nvim_buf_set_option(buf, "swapfile", false)
+	api.nvim_buf_set_option(buf, "modifiable", true)
+
+	-- Set window options
+	api.nvim_win_set_option(win, "wrap", true)
+	api.nvim_win_set_option(win, "cursorline", true)
+
+	-- Close window on q or <Esc>
+	api.nvim_buf_set_keymap(buf, "n", "q", "", {
+		callback = function()
+			api.nvim_win_close(win, true)
+		end,
+		noremap = true,
+		silent = true,
+	})
+	api.nvim_buf_set_keymap(buf, "n", "<Esc>", "", {
+		callback = function()
+			api.nvim_win_close(win, true)
+		end,
+		noremap = true,
+		silent = true,
+	})
+
+	return {
+		buf = buf,
+		win = win,
+		append = vim.schedule_wrap(function(text)
+			-- Check if buffer still exists
+			if not vim.api.nvim_buf_is_valid(buf) then
+				return
+			end
+
+			local lines = type(text) == "table" and text or { text }
+
+			-- Safely modify buffer
+			pcall(function()
+				vim.api.nvim_buf_set_option(buf, "modifiable", true)
+				vim.api.nvim_buf_set_lines(buf, -1, -1, false, lines)
+				vim.api.nvim_buf_set_option(buf, "modifiable", false)
+
+				-- Auto-scroll if window is still valid
+				if vim.api.nvim_win_is_valid(win) then
+					vim.api.nvim_win_set_cursor(win, { vim.api.nvim_buf_line_count(buf), 0 })
+				end
+			end)
+		end),
+	}
+end
+
 return M

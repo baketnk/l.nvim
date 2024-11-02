@@ -10,6 +10,7 @@ local _state = {
 	paste_mark = nil,
 	autocomplete = {},
 	autocomplete_model = {},
+	wtf_model = "llama3.2:3b",
 	max_prompt_length = nil,
 	default_prompt_path = nil,
 	project_root = nil,

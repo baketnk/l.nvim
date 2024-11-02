@@ -143,6 +143,8 @@ function M.setup(_opts)
 			-- api_key = "",
 		}
 
+	state.wtf_model = opts.wtf_model or "llama3.2:3b"
+
 	state.current_model = state.models[1]
 	state.max_prompt_length = opts.max_prompt_length or 16000
 
@@ -222,7 +224,7 @@ function M.setup(_opts)
 	M.make_plugKey("OpenClose", "n", ";", lcmd.open_close, { desc = "Toggle drawer" })
 	M.make_plugKey("LLMChat", "n", "l", lcmd.chat_with_magic, { desc = "Chat with LLM" })
 	M.make_plugKey("ReplaceFile", "n", "r", lcmd.replace_file_with_codeblock, { desc = "Replace file with code" })
-	M.make_plugKey("SelectToPrompt", "v", "p", lcmd.selection_to_prompt, { desc = "copy selection to end of prompt" })
+	M.make_plugKey("SelectToPrompt", "x", "p", lcmd.selection_to_prompt, { desc = "copy selection to end of prompt" })
 	M.make_plugKey(
 		"SelectToPromptWrap",
 		"v",
@@ -274,6 +276,16 @@ function M.setup(_opts)
 		lcmd.shell_to_prompt,
 		{ desc = "Run shell command and add output to prompt" }
 	)
+
+	-- cfg.lua (add to the setup function)
+	M.make_plugKey(
+		"StreamSelected",
+		"x",
+		"w",
+		lcmd.stream_selected_text,
+		{ desc = "Stream selected text through qask" }
+	)
+
 	M.make_plugKey("GenerateReadme", "n", "R", lcmd.generate_readme, { desc = "Generate README.md" })
 	if opts.open_drawer_on_setup then
 		M.show_drawer()

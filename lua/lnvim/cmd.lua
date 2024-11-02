@@ -275,6 +275,15 @@ function M.chat_with_magic_and_diff()
 	return LLM.chat_with_buffer_and_diff()
 end
 
+-- Enhanced stream_selected_text function
+M.stream_selected_text = vim.schedule_wrap(function()
+	-- First, ensure the required command exists
+	local _, err = pcall(require("lnvim.wtf").visual_quick_ask)
+	if err then
+		vim.print(vim.inspect(err))
+	end
+end)
+
 function M.set_system_prompt()
 	modal.modal_input({ prompt = "Edit System Prompt:", default = state.system_prompt }, function(input)
 		if type(input) ~= "table" then
@@ -286,8 +295,8 @@ function M.set_system_prompt()
 end
 
 function M.selection_to_prompt()
-	local _, start_line, _, _ = vim.fn.getpos("'<")
-	local _, end_line, _, _ = vim.fn.getpos("'>")
+	local _, start_line, _, _ = unpack(vim.fn.getpos("'<"))
+	local _, end_line, _, _ = unpack(vim.fn.getpos("'>"))
 	local lines = vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
 
 	-- Get the current contents of the diff buffer
