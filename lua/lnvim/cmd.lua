@@ -349,10 +349,6 @@ function M.open_close()
 	end
 end
 
-function M.trigger_autocomplete()
-	require("lnvim.autocomplete").trigger_autocomplete()
-end
-
 -- DO NOT REMOVE THIS COMMENT, IMPORTANT DEFINITION OF INTERNAL SYNTAX
 -- LSP file list syntax: @lsp:<type>:<name>:<file>:<line>:<column>
 function M.lsp_introspect()

@@ -1,18 +1,174 @@
 -- autocomplete.lua
-local M = {}
-local completion = ""
+local M = {
+  job = 0,
+}
 local Job = require("plenary.job")
+local cmp = require("cmp")
 local state = require("lnvim.state")
+local consts = require("lnvim.constants")
+local source = {}
 
-local function get_context(lines_before, lines_after)
-	local current_line = vim.fn.line(".")
-	local start_line = math.max(1, current_line - lines_before)
-	local end_line = math.min(vim.fn.line("$"), current_line + lines_after)
+-- this function is taken from https://github.com/yasuoka/stralnumcmp/blob/master/stralnumcmp.lua
+local function stralnumcmp(a, b)
+  local a0, b0, an, bn, as, bs, c
+  a0 = a
+  b0 = b
+  while a:len() > 0 and b:len() > 0 do
+    an = a:match('^%d+')
+    bn = b:match('^%d+')
+    as = an or a:match('^%D+')
+    bs = bn or b:match('^%D+')
 
-	return vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
+    if an and bn then
+      c = tonumber(an) - tonumber(bn)
+    else
+      c = (as < bs) and -1 or ((as > bs) and 1 or 0)
+    end
+    if c ~= 0 then
+      return c
+    end
+    a = a:sub((an and an:len() or as:len()) + 1)
+    b = b:sub((bn and bn:len() or bs:len()) + 1)
+  end
+  return (a0:len() - b0:len())
 end
 
-local function generate_autocomplete_args(model, prompt, suffix)
+function source:is_available()
+   return true
+end
+function source:get_debug_name()
+   return consts.display_name
+end
+function source:get_keyword_pattern()
+   return [[\k+]]
+end
+function source:get_trigger_characters()
+   return { } -- "{", "}", "(", ")", "[", "]" }
+end
+
+local function get_context(params, maxLength)
+    local nvim_buf_get_lines = vim.api.nvim_buf_get_lines
+    local nvim_buf_line_count = vim.api.nvim_buf_line_count
+
+    local bufnr = params.context.bufnr
+    local cursor = params.context.cursor
+    
+    local row, col = cursor.row, cursor.col
+    local totalLines = nvim_buf_line_count(bufnr)
+
+    -- Function to get text before cursor (excluding current line)
+    local function getTextBefore()
+        if row <= 0 then return "" end
+        
+        local startRow = math.max(0, row - 10) -- Get up to 10 lines before
+        local lines = nvim_buf_get_lines(bufnr, startRow, row, false)
+        
+        local textBefore = table.concat(lines, "\n")
+        -- Limit the length from the end (as we want the most recent context)
+        return string.sub(textBefore, -maxLength)
+    end
+
+    -- Function to get text after cursor (excluding current line)
+    local function getTextAfter()
+        if row >= totalLines - 1 then return "" end
+        
+        local endRow = math.min(totalLines, row + 11) -- Get up to 10 lines after
+        local lines = nvim_buf_get_lines(bufnr, row + 1, endRow, false)
+        
+        local textAfter = table.concat(lines, "\n")
+        -- Limit the length from the start
+        return string.sub(textAfter, 1, maxLength)
+    end
+
+    return getTextBefore(), getTextAfter()
+end
+
+function source:complete(params, callback)
+    vim.print("called lnvim autocomplete")
+    vim.print(vim.inspect(params))
+    -- Use the params object to get context instead of direct buffer access
+    local cursor_line = params.context
+    local cursor_col = params.context.cursor.col
+
+    -- Get the lines before the cursor
+    local lines_before, lines_after = get_context(params, 1024) -- gotta find this constant
+vim.print("Lines before:", lines_before)
+vim.print("Lines after:", lines_after)
+    -- Construct the prompt with proper context
+    local prompt = "<|fim_prefix|>" .. lines_before .. params.context.cursor_before_line .. "<|fim_suffix>" .. params.context.cursor_after_line .. lines_after .. "<|fim_middle|>"
+    vim.print(prompt)
+
+    -- Create a wrapper for the callback to format the response properly
+    local function handle_completion(text)
+        vim.print("handle completion callback -> cmp")
+        if text and text ~= "" then
+            local items = {}
+            -- Split the completion into lines
+            local lines = vim.split(text, "\n")
+            for _, line in ipairs(lines) do
+                if line ~= "" then
+                    table.insert(items, {
+                        label = line,
+                        insertText = line,
+                        kind = cmp.lsp.CompletionItemKind.Text,
+                        documentation = {
+                            kind = cmp.lsp.MarkupKind.Markdown,
+                            value = text
+                        }
+                    })
+                end
+            end
+            callback(items)
+        else
+            callback(nil)
+        end
+    end
+
+    M.autocomplete(prompt, state.autocomplete_model, handle_completion)
+end
+
+
+function source:resolve(item, callback)
+   callback(item)
+end
+
+function source:execute(completion_item, callback)
+    -- Get the current line text before cursor
+    local cursor_line = vim.api.nvim_get_current_line()
+    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+    local _, col = cursor_pos[1], cursor_pos[2]
+    
+    -- Get the text before cursor on current line
+    local text_before = string.sub(cursor_line, 1, col)
+    
+    -- Get the completion text from the item
+    local completion_text = completion_item.insertText or completion_item.label
+    
+    -- Find the common prefix between what's already typed and the completion
+    local common_length = 0
+    while common_length < #text_before and common_length < #completion_text do
+        if stralnumcmp(string.sub(text_before, -common_length), string.sub(completion_text, 1, common_length)) == 0 then
+            common_length = common_length + 1
+        else
+            break
+        end
+    end
+    
+    -- Extract only the new text to insert (excluding what's already typed)
+    local text_to_insert = string.sub(completion_text, common_length + 1)
+    
+    -- Create a modified completion item with the correct text to insert
+    local modified_item = vim.deepcopy(completion_item)
+    modified_item.insertText = text_to_insert
+    
+    callback(modified_item)
+end
+
+
+
+
+local function generate_autocomplete_args(model, prompt)
+   vim.print("ac args")
 	local args = {
 		"-N",
 		"-s",
@@ -30,7 +186,6 @@ local function generate_autocomplete_args(model, prompt, suffix)
 	local data = {
 		model = model.model_id,
 		prompt = prompt,
-		suffix = suffix,
 		max_tokens = state.autocomplete.max_tokens,
 		temperature = state.autocomplete.temperature,
 		stop = [[\n]], -- Stop at newline
@@ -44,132 +199,11 @@ local function generate_autocomplete_args(model, prompt, suffix)
 	return args
 end
 
-local autocmd_id = nil
-local remove_completion_text = function() end
-local function create_autocmd()
-	autocmd_id = vim.api.nvim_create_autocmd({ "InsertCharPre", "TextChanged", "TextChangedI" }, {
-		callback = function(ev)
-			if
-				ev.event == "InsertCharPre" and (vim.v.char == "\x17" or vim.v.char == "\x0c" or vim.v.char == "\x06")
-			then
-				-- Ignore Ctrl-W, Ctrl-L, and Ctrl-F
-				return
-			end
-			remove_completion_text()
-		end,
-	})
-end
 
-function M.trigger_autocomplete()
-	local context = get_context(100, 0)
-	local post_context = get_context(0, 100)
-	local current_line = vim.api.nvim_get_current_line()
-	local cursor_pos = vim.api.nvim_win_get_cursor(0)[2]
-	local code_before_cursor = current_line:sub(1, cursor_pos)
-	local code_after_cursor = current_line:sub(cursor_pos + 1)
-
-	local prompt = table.concat(context, "\n") .. "\n" .. code_before_cursor
-	local suffix = code_after_cursor .. "\n" .. table.concat(post_context, "\n")
-	state.status = "Autocomplete"
-
-	completion = ""
-
-	create_autocmd()
-	M.autocomplete(prompt, suffix, state.autocomplete_model, function(completion)
-		vim.schedule(function()
-			local lines = vim.split(completion, "\n")
-			-- Insert the lines at the cursor position
-			vim.api.nvim_put(lines, "c", true, true)
-		end)
-	end)
-end
-
-local function complete_word()
-	local line = vim.api.nvim_get_current_line()
-	local col = vim.api.nvim_win_get_cursor(0)[2]
-	local word_start = vim.fn.match(line:sub(1, col), "\\k*$")
-	local word = vim.split(completion, "%s+")[1]
-	vim.api.nvim_buf_set_text(0, vim.fn.line(".") - 1, word_start, vim.fn.line(".") - 1, col, { word })
-end
-
-local function complete_line()
-	local line = vim.api.nvim_get_current_line()
-	local col = vim.api.nvim_win_get_cursor(0)[2]
-	local completion_line = vim.split(completion, "\n")[1]
-	vim.api.nvim_buf_set_text(
-		0,
-		vim.fn.line(".") - 1,
-		col,
-		vim.fn.line(".") - 1,
-		#line,
-		{ completion_line:sub(col + 1) }
-	)
-end
-
-local function complete_full()
-	local line = vim.api.nvim_get_current_line()
-	local col = vim.api.nvim_win_get_cursor(0)[2]
-	local lines = vim.split(completion, "\n")
-	vim.api.nvim_buf_set_text(0, vim.fn.line(".") - 1, col, vim.fn.line(".") - 1, #line, lines)
-end
-
-M.complete_word = complete_word
-M.complete_line = complete_line
-M.complete_full = complete_full
-
-local ns_id = vim.api.nvim_create_namespace("LnvimAutoComplete")
-local completion_mark = nil
-vim.api.nvim_set_hl(0, "LnvimAutoComplete", {
-	bg = vim.o.background == "dark" and "#3c3c3c" or "#dddddd",
-	fg = vim.o.background == "dark" and "#bcbcbc" or "#454545",
-	italic = true,
-})
-
-local function set_completion_mark()
-	local line, col = unpack(vim.api.nvim_win_get_cursor(0))
-	local line_text = vim.api.nvim_get_current_line()
-	local end_col = math.min(col + #completion, #line_text)
-
-	completion_mark = vim.api.nvim_buf_set_extmark(0, ns_id, line - 1, col, {
-		end_line = line - 1,
-		end_col = end_col,
-		hl_group = "LnvimAutoComplete",
-	})
-end
-
-local function clear_completion_mark()
-	if completion_mark then
-		vim.api.nvim_buf_del_extmark(0, ns_id, completion_mark)
-		completion_mark = nil
-	end
-end
-
-local function disable_autocmd()
-	if autocmd_id then
-		vim.api.nvim_del_autocmd(autocmd_id)
-		autocmd_id = nil
-	end
-end
-
-local function remove_completion_text()
-	if completion_mark then
-		local mark = vim.api.nvim_buf_get_extmark_by_id(0, ns_id, completion_mark, { details = true })
-		if mark and #mark > 0 then
-			local start_line, start_col = mark[1], mark[2]
-			local end_line, end_col = mark[3].end_line, mark[3].end_col
-			local current_text = vim.api.nvim_buf_get_text(0, start_line, start_col, end_line, end_col, {})[1] or ""
-			if #current_text > 0 then
-				vim.api.nvim_buf_set_text(0, start_line, start_col, end_line, end_col, { "" })
-			end
-		end
-		clear_completion_mark()
-	end
-	disable_autocmd()
-end
-
-function M.autocomplete(prompt, suffix, model, callback)
-	local args = generate_autocomplete_args(model, prompt, suffix)
-
+function M.autocomplete(prompt, model, callback)
+	local args = generate_autocomplete_args(model, prompt)
+   vim.print(args)
+   local completion = ""
 	local function handle_data(data)
 		vim.print(vim.inspect(data))
 		local json_string = data:match("^data: (.+)$")
@@ -219,11 +253,12 @@ function M.autocomplete(prompt, suffix, model, callback)
 		end,
 		on_exit = function()
 			vim.schedule(function()
-				set_completion_mark()
 				state.status = "Idle"
 			end)
 		end,
 	}):start()
 end
 
+cmp.register_source(consts.display_name, source)
+M.source = source
 return M

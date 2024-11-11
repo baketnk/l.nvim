@@ -34,7 +34,7 @@ local function validate_model(model)
 	local required_fields = { "model_id", "model_type", "api_url", "api_key" }
 	for _, field in ipairs(required_fields) do
 		if not model[field] then
-			if field == "api_key" and not model["api_url"].match("localhost") then
+			if field == "api_key" and not (model["noauth"] or model["api_url"].match("localhost")) then
 				error("Model configuration missing required field: " .. field)
 			end
 		end
@@ -109,16 +109,17 @@ M.default_models = {
 		api_key = "XAI_API_KEY",
 		use_toolcalling = false,
 	},
+   {
+      model_id = "qwen2.5-coder:32b",
+      model_type = "openaicompat",
+      noauth = true,
+      api_url = "http://tforest:11434/v1/chat/completions",
+      use_toolcalling = false,
+   }
 }
 
 function M.setup(_opts)
 	local opts = _opts or {}
-
-	if not opts.disable_lualine and pcall(require, "lualine") then
-		require("lualine").setup({
-			sections = { lualine_z = { require("lnvim.ui.lualine").lnvim_status } },
-		})
-	end
 
 	M.is_loaded = true
 
@@ -137,12 +138,12 @@ function M.setup(_opts)
 
 	state.autocomplete_model = opts.autocomplete_model
 		or {
-			model_id = "deepseek-coder-v2:16b",
+			model_id = "qwen2.5-coder:3b",
 			model_type = "openai",
 			api_url = "http://localhost:11434/v1/completions",
 			-- api_key = "",
 		}
-
+   require("lnvim.autocomplete")
 	state.wtf_model = opts.wtf_model or "llama3.2:3b"
 
 	state.current_model = state.models[1]
@@ -251,22 +252,6 @@ function M.setup(_opts)
 		lcmd.shell_to_prompt,
 		{ desc = "Run shell command and add output to prompt" }
 	)
-
-	vim.keymap.set({ "n", "i" }, "<S-C-Space>", function()
-		vim.schedule(lcmd.trigger_autocomplete)
-	end, { desc = "Trigger autocompletion" })
-
-	vim.keymap.set("i", "<C-w>", function()
-		require("lnvim.autocomplete").complete_word()
-	end, { desc = "Complete current word" })
-
-	vim.keymap.set("i", "<C-l>", function()
-		require("lnvim.autocomplete").complete_line()
-	end, { desc = "Complete current line" })
-
-	vim.keymap.set("i", "<C-f>", function()
-		require("lnvim.autocomplete").complete_full()
-	end, { desc = "Complete using full generated text" })
 
 	M.make_plugKey("ApplyDiff", "n", "a", lcmd.apply_diff_to_buffer, { desc = "Apply diff to buffer" })
 	M.make_plugKey(
