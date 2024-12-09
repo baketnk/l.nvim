@@ -51,7 +51,6 @@ require('lnvim').setup({
 
 | Model ID | Model Type | API URL | API Key | Use Toolcalling |
 |----------|------------|---------|---------|-----------------|
-
 | claude-3-5-sonnet-20240620 | anthropic | https://api.anthropic.com/v1/messages | ANTHROPIC_API_KEY | false |
 | claude-3-opus-20240229 | anthropic | https://api.anthropic.com/v1/messages | ANTHROPIC_API_KEY | false |
 | hermes-3-llama-3.1-405b-fp8 | openaicompat | https://api.lambdalabs.com/v1/chat/completions | LAMBDA_API_KEY | false |
