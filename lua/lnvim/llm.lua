@@ -180,6 +180,8 @@ function M.insert_assistant_delimiter(label)
 	local _label = label
 	if not label then
 		_label = "assistant"
+   else
+      _label = "assistant-" .. _label
 	end
 	local delimiter = string.rep("-", 40) .. _label .. os.date(" %Y-%m-%d %H:%M:%S ") .. string.rep("-", 40)
 	vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "", delimiter, "" })
@@ -463,8 +465,9 @@ function M.call_llm(args, handler)
 		debug_file:write("Full curl command: curl " .. table.concat(args, " ") .. "\n\n")
 		debug_file:flush()
 	end
-	vim.notify("requesting from LLM " .. state.current_model.model_type .. " " .. state.current_model.model_id)
-	M.insert_assistant_delimiter()
+   local model_str = state.current_model.model_type .. " " .. state.current_model.model_id
+	vim.notify("requesting from LLM " .. model_str) 
+	M.insert_assistant_delimiter(model_str)
 	active_job:start()
 
 	vim.api.nvim_create_autocmd("User", {

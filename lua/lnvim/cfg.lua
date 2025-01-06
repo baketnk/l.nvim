@@ -103,7 +103,7 @@ M.default_models = {
 		use_toolcalling = false,
 	},
 	{
-		model_id = "grok-beta",
+		model_id = "grok-2-1212",
 		model_type = "openaicompat",
 		api_url = "https://api.x.ai/v1/chat/completions",
 		api_key = "XAI_API_KEY",

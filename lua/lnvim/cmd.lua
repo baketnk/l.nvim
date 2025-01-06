@@ -3,6 +3,7 @@ local layout = require("lnvim.ui.layout")
 local editor = require("lnvim.ui.editor")
 local buffers = require("lnvim.ui.buffers")
 local constants = require("lnvim.constants")
+local primitives = require("lnvim.utils.primitive")
 local helpers = require("lnvim.utils.helpers")
 local LLM = require("lnvim.llm")
 local Job = require("plenary.job")
@@ -18,6 +19,7 @@ local actions = require("telescope.actions")
 local action_state = require("telescope.actions.state")
 local modal = require("lnvim.ui.modal")
 local state = require("lnvim.state")
+local primitive = require("lnvim.utils.primitive")
 
 function M.setup_filetype_ac()
 	local group = vim.api.nvim_create_augroup("LCodeBlocks", { clear = true })
@@ -294,42 +296,28 @@ function M.set_system_prompt()
 	end)
 end
 
-function M.selection_to_prompt()
-	local _, start_line, _, _ = unpack(vim.fn.getpos("'<"))
-	local _, end_line, _, _ = unpack(vim.fn.getpos("'>"))
-	local lines = vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
 
-	-- Get the current contents of the diff buffer
-	local diff_buffer_lines = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
+function M.selection_to_prompt(wrap_text)
+   vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "n", false)
+   vim.schedule(function()
+      local _, start_line, _, _ = unpack(vim.fn.getpos("'<"))
+      local _, end_line, _, _ = unpack(vim.fn.getpos("'>"))
+      if (end_line < start_line) then
+         start_line, end_line = end_line, start_line
+      end
 
-	-- Append the selected lines to the diff buffer, adding a newline if necessary
-	if #diff_buffer_lines > 0 and diff_buffer_lines[#diff_buffer_lines] ~= "" then
-		table.insert(diff_buffer_lines, "")
-	end
-	vim.list_extend(diff_buffer_lines, lines)
+      local lines = vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
 
-	-- Update the diff buffer with the new contents
-	vim.api.nvim_buf_set_lines(buffers.diff_buffer, 0, -1, false, diff_buffer_lines)
+      if (wrap_text) then
+         lines = primitive.flatten({wrap_text, lines, wrap_text})
+      end	
+      -- update the diff buffer with the new contents
+      vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, lines)
+   end)
 end
 
 function M.selection_to_prompt_wrapped()
-	local _, start_line, _, _ = vim.fn.getpos("'<")
-	local _, end_line, _, _ = vim.fn.getpos("'>")
-	local lines = vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
-
-	-- Get the current contents of the diff buffer
-	local diff_buffer_lines = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
-
-	-- Append the selected lines to the diff buffer, wrapping them in a markdown codeblock
-	if #diff_buffer_lines > 0 and diff_buffer_lines[#diff_buffer_lines] ~= "" then
-		table.insert(diff_buffer_lines, "")
-	end
-	table.insert(diff_buffer_lines, "```")
-	vim.list_extend(diff_buffer_lines, lines)
-	table.insert(diff_buffer_lines, "```")
-
-	-- Update the diff buffer with the new contents
-	vim.api.nvim_buf_set_lines(buffers.diff_buffer, 0, -1, false, diff_buffer_lines)
+   return M.selection_to_prompt("```")
 end
 
 function M.next_magic()
