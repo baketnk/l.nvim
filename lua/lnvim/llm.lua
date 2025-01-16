@@ -446,6 +446,9 @@ function M.call_llm(args, handler)
 			parse_and_call(out)
 		end,
 		on_stderr = function(_, err)
+         if not err then
+            return
+         end
 			vim.schedule(function()
 				state.status = "LLM Error"
 				if debug_file then
@@ -461,10 +464,10 @@ function M.call_llm(args, handler)
 			end)
 		end,
 	})
-	if debug_file then
-		debug_file:write("Full curl command: curl " .. table.concat(args, " ") .. "\n\n")
-		debug_file:flush()
-	end
+	-- if debug_file then
+	--	debug_file:write("Full curl command: curl " .. table.concat(args, " ") .. "\n\n")
+	--	debug_file:flush()
+	-- end
    local model_str = state.current_model.model_type .. " " .. state.current_model.model_id
 	vim.notify("requesting from LLM " .. model_str) 
 	M.insert_assistant_delimiter(model_str)
