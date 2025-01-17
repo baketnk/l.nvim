@@ -225,6 +225,7 @@ function M.setup(_opts)
 	M.make_plugKey("OpenClose", "n", ";", lcmd.open_close, { desc = "Toggle drawer" })
 	M.make_plugKey("LLMChat", "n", "l", lcmd.chat_with_magic, { desc = "Chat with LLM" })
 	M.make_plugKey("ReplaceFile", "n", "r", lcmd.replace_file_with_codeblock, { desc = "Replace file with code" })
+   M.make_plugKey("SmartReplaceCodeblock", "n", "R", lcmd.smart_replace_with_codeblock, { desc = "Smart replace code block" })
 	M.make_plugKey("SelectToPrompt", "x", "p", lcmd.selection_to_prompt, { desc = "copy selection to end of prompt" })
 	M.make_plugKey(
 		"SelectToPromptWrap",
@@ -270,8 +271,15 @@ function M.setup(_opts)
 		lcmd.stream_selected_text,
 		{ desc = "Stream selected text through qask" }
 	)
+M.make_plugKey(
+    "DumpSymbols",
+    "n",
+    "S",  -- or whatever key you prefer
+    require("lnvim.lsp_replace_rules").dump_document_symbols_to_buffer,
+    { desc = "Dump LSP symbols to buffer" }
+)
 
-	M.make_plugKey("GenerateReadme", "n", "R", lcmd.generate_readme, { desc = "Generate README.md" })
+	-- M.make_plugKey("GenerateReadme", "n", "R", lcmd.generate_readme, { desc = "Generate README.md" })
 	if opts.open_drawer_on_setup then
 		M.show_drawer()
 	end

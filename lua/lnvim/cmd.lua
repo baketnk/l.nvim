@@ -367,6 +367,10 @@ function M.replace_file_with_codeblock()
 	return editor.replace_file_with_codeblock()
 end
 
+function M.smart_replace_with_codeblock()
+    return require("lnvim.lsp_replace_rules").replace_with_codeblock()
+end
+
 function M.clear_buffers(which)
 	local buffers_to_clear = {}
 
