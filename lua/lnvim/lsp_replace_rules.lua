@@ -5,167 +5,201 @@ local editor = require("lnvim.ui.editor")
 -- Filetype specific rules
 M.replace_rules = {
     zig = {
-        parse_identifier = function(contents)
-    -- Look for different types of declarations
-    -- Function
-    local fn_name = contents:match("pub%s+fn%s+([%w_]+)%s*%(") or
-                   contents:match("fn%s+([%w_]+)%s*%(")
-    if fn_name then
-        return {
-            name = fn_name,
-            kind = "Function"  -- Matches SymbolKind.Function
-        }
-    end
+   parse_identifiers = function(contents)
+            local parser = vim.treesitter.get_string_parser(contents, "zig")
+            local tree = parser:parse()[1]
+            local root = tree:root()
 
-    -- Test declaration
-    local test_name = contents:match('test%s+"([^"]+)"') or
-                    contents:match("test%s+'([^']+)'")
-    if test_name then
-        return {
-            name = test_name,
-            kind = "Method"  -- ZLS uses Method for tests as seen in document_symbol.zig
-        }
-    end
+            local symbols = {}
 
-    -- Variable declarations
-    local var_name = contents:match("pub%s+var%s+([%w_]+)%s*=")
-    if var_name then
-        return {
-            name = var_name,
-            kind = "Variable"
-        }
-    end
-
-    -- Constants - need to check what follows the declaration
-    local const_name = contents:match("pub%s+const%s+([%w_]+)%s*=%s*")
-    if const_name then
-        if contents:match("pub%s+const%s+" .. const_name .. "%s*=%s*struct%s*{") then
-            return { name = const_name, kind = "Constant" }
-        elseif contents:match("pub%s+const%s+" .. const_name .. "%s*=%s*union%s*{") then
-            return { name = const_name, kind = "Constant" }
-        elseif contents:match("pub%s+const%s+" .. const_name .. "%s*=%s*enum%s*{") then
-            return { name = const_name, kind = "Constant" }
-        else
-            -- Other constants (numbers, strings, etc.)
-            return { name = const_name, kind = "Constant" }
-        end
-    end
-
-    return nil
-end,
-
-find_symbol = function(uri, identifier, callback)
-    local params = {
-        textDocument = { uri = uri },
-    }
-   local kind_map = {
-        Function = 12,    -- Function
-        Method = 6,       -- Used for tests
-        Struct = 23,      -- Struct
-        Union = 21,       -- Union
-        Enum = 10,       -- Enum
-        Constant = 14,    -- Constant
-        Variable = 13,    -- Variable
-        Field = 8,        -- Field
-        EnumMember = 22   -- EnumMember
-    }
-    local bufnr = vim.uri_to_bufnr(uri)
-
-    vim.print("LSP Request URI:", uri)  -- Debug log
-    vim.print("Looking for symbol:", vim.inspect(identifier))  -- Debug log
-
-    local symbols = vim.lsp.buf_request_sync(bufnr, 
-        'textDocument/documentSymbol', 
-        params, 
-        1000
-    )
-
-    local matches = {}
-
-    local function search_symbols(symbol_list, parent_path)
-        for _, symbol in ipairs(symbol_list or {}) do
-            local current_path = parent_path and (parent_path .. "." .. symbol.name) or symbol.name
-
-            if symbol.kind == kind_map[identifier.kind] and
-               symbol.name == identifier.name then
-                table.insert(matches, {
-                    symbol = symbol,
-                    path = current_path
-                })
-            end
-            -- Recursively search children
-            if symbol.children then
-                search_symbols(symbol.children, current_path)
-            end
-        end
-    end
-
-    for _, result in ipairs(symbols or {}) do
-        search_symbols(result.result)
-    end
-
-    if #matches == 0 then
-        callback(nil)
-    elseif #matches == 1 then
-        callback( matches[1].symbol )
-    else
-        -- Use telescope for selection
-        local pickers = require "telescope.pickers"
-        local finders = require "telescope.finders"
-        local conf = require("telescope.config").values
-        local actions = require "telescope.actions"
-        local action_state = require "telescope.actions.state"
-
-        pickers.new({}, {
-            prompt_title = "Select Symbol Location",
-            finder = finders.new_table {
-                results = matches,
-                entry_maker = function(entry)
-                    return {
-                        value = entry,
-                        display = entry.path,
-                        ordinal = entry.path,
-                    }
-                end
-            },
-            sorter = conf.generic_sorter({}),
-            attach_mappings = function(prompt_bufnr, map)
-                actions.select_default:replace(function()
-                    actions.close(prompt_bufnr)
-                    local selection = action_state.get_selected_entry()
-                    if selection then
-                       callback(selection.value.symbol)
-                    else
-                       callback(nil)
+            local function visit_node(node)
+                local node_type = node:type()
+                if node_type == "function_declaration" or 
+                   node_type == "test_declaration" or 
+                   node_type == "variable_declaration" or 
+                   node_type == "constant_declaration" then
+                    
+                    local name_node = node:named_child(0)
+                    if name_node and name_node:type() == "identifier" then
+                        local name = vim.treesitter.get_node_text(name_node, contents)
+                        local kind = "Unknown"
+                        
+                        if node_type == "function_declaration" then
+                            kind = "Function"
+                        elseif node_type == "test_declaration" then
+                            kind = "Method"
+                        elseif node_type == "variable_declaration" then
+                            kind = "Variable"
+                        elseif node_type == "constant_declaration" then
+                            kind = "Constant"
+                        end
+                        
+                        -- Get the entire text of the node
+                        local node_text = vim.treesitter.get_node_text(node, contents)
+                        
+                        table.insert(symbols, { name = name, kind = kind, node = node, text = node_text })
                     end
-                end)
-                return true
-            end,
-        }):find()
-    end
-end,
+                end
+                
+                for child in node:iter_children() do
+                    visit_node(child)
+                end
+            end
+
+            visit_node(root)
+
+            return symbols
+        end,
 
 
-        replace_symbol = function(bufnr, original_range, new_text)
-            vim.api.nvim_buf_set_text(
-                bufnr,
-                original_range.start.line,
-                original_range.start.character,
-                original_range['end'].line,
-                original_range['end'].character,
-                vim.split(new_text, "\n")
+        find_symbols = function(uri, identifiers, callback)
+            local params = {
+                textDocument = { uri = uri },
+            }
+            local kind_map = {
+                Function = 12,    -- Function
+                Method = 6,       -- Used for tests
+                Struct = 23,      -- Struct
+                Union = 21,       -- Union
+                Enum = 10,       -- Enum
+                Constant = 14,    -- Constant
+                Variable = 13,    -- Variable
+                Field = 8,        -- Field
+                EnumMember = 22   -- EnumMember
+            }
+            local bufnr = vim.uri_to_bufnr(uri)
+
+            vim.print("LSP Request URI:", uri)  -- Debug log
+            vim.print("Looking for symbols:", vim.inspect(identifiers))  -- Debug log
+
+            local symbols = vim.lsp.buf_request_sync(bufnr, 
+                'textDocument/documentSymbol', 
+                params, 
+                1000
             )
+
+            local matches = {}
+
+            local function search_symbols(symbol_list, parent_path)
+                for _, symbol in ipairs(symbol_list or {}) do
+                    local current_path = parent_path and (parent_path .. "." .. symbol.name) or symbol.name
+
+                    for _, identifier in ipairs(identifiers) do
+                        if (symbol.kind == kind_map[identifier.kind] or symbol.kind == kind_map["Constant"] ) and
+                           symbol.name == identifier.name then
+                            table.insert(matches, {
+                                symbol = symbol,
+                                path = current_path,
+                                identifier = identifier
+                            })
+                        end
+                    end
+
+                    -- Recursively search children
+                    if symbol.children then
+                        search_symbols(symbol.children, current_path)
+                    end
+                end
+            end
+
+            for _, result in ipairs(symbols or {}) do
+                search_symbols(result.result)
+            end
+
+            if #matches == 0 then
+                callback(nil)
+            else
+                -- Use telescope for selection
+                local pickers = require "telescope.pickers"
+                local finders = require "telescope.finders"
+                local conf = require("telescope.config").values
+                local actions = require "telescope.actions"
+                local action_state = require "telescope.actions.state"
+
+                pickers.new({}, {
+                    prompt_title = "Select Symbols to Replace",
+                    finder = finders.new_table {
+                        results = matches,
+                        entry_maker = function(entry)
+                            return {
+                                value = entry,
+                                display = entry.path,
+                                ordinal = entry.path,
+                            }
+                        end
+                    },
+                    sorter = conf.generic_sorter({}),
+                    attach_mappings = function(prompt_bufnr, map)
+                        actions.select_default:replace(function()
+        local current_picker = action_state.get_current_picker(prompt_bufnr)
+        local multi_selections = current_picker:get_multi_selection()
+        if #multi_selections > 0 then
+            callback(multi_selections)
+        else
+            local selection = action_state.get_selected_entry()
+            if selection then
+                callback({selection})
+            else
+                callback(nil)
+            end
+        end
+
+        actions.close(prompt_bufnr)
+    end)
+    return true
+                    end,
+                    multi_select = true,
+                }):find()
+            end
+        end,
+
+
+        replace_symbols = function(bufnr, symbols, new_text)
+            table.sort(symbols, function(a, b)
+                 local range_a = a.value.symbol.range
+                 local range_b = b.value.symbol.range
+                 return range_a.start.line > range_b.start.line
+             end)
+            for _, symbol in ipairs(symbols) do
+                if symbol and symbol.value and symbol.value.symbol and symbol.value.symbol.range then
+                    local range = symbol.value.symbol.range
+                    local identifier = symbol.value.identifier
+                    
+                    -- Find the corresponding text in the new_text
+                    local matching_symbol = nil
+                    for _, parsed_symbol in ipairs(new_text) do
+                        if parsed_symbol.name == identifier.name and parsed_symbol.kind == identifier.kind then
+                            matching_symbol = parsed_symbol
+                            break
+                        end
+                    end
+                    
+                    if matching_symbol then
+                        vim.api.nvim_buf_set_text(
+                            bufnr,
+                            range.start.line,
+                            range.start.character,
+                            range['end'].line,
+                            range['end'].character,
+                            vim.split(matching_symbol.text, "\n")
+                        )
+                    else
+                        vim.notify("Could not find matching symbol for replacement: " .. identifier.name, vim.log.levels.WARN)
+                    end
+                else
+                    vim.notify("Invalid symbol structure: " .. vim.inspect(symbol), vim.log.levels.ERROR)
+                end
+            end
         end
     }
 }
 
 
 function M.replace_with_codeblock()
-
-   local layout = require("lnvim.ui.layout").get_layout()
-   local main_buffer = vim.api.nvim_win_get_buf(layout.main)
-   local filetype = vim.bo[main_buffer].filetype
-   local handler = M.replace_rules[filetype]
+    local layout = require("lnvim.ui.layout").get_layout()
+    local main_buffer = vim.api.nvim_win_get_buf(layout.main)
+    local filetype = vim.bo[main_buffer].filetype
+    local handler = M.replace_rules[filetype]
 
     if not handler then
         vim.notify("No replacement handler for filetype: " .. filetype, vim.log.levels.ERROR)
@@ -179,25 +213,26 @@ function M.replace_with_codeblock()
         return
     end
 
-    -- Parse the identifier from the code
-    local identifier = handler.parse_identifier(table.concat(lines, "\n"))
-    if not identifier then
-        vim.notify("Could not find symbol to replace in codeblock", vim.log.levels.ERROR)
+    -- Parse the identifiers from the code
+    local identifiers = handler.parse_identifiers(table.concat(lines, "\n"))
+    if not identifiers or #identifiers == 0 then
+        vim.notify("Could not find symbols to replace in codeblock", vim.log.levels.ERROR)
         return
     end
 
-    print("Parsed identifier:", vim.inspect(identifier))  -- Debug log
-
+    print("Parsed identifiers:", vim.inspect(identifiers))  -- Debug log
 
     local main_buffer_uri = vim.uri_from_bufnr(main_buffer)
-    handler.find_symbol(main_buffer_uri, identifier, function(symbol)
-        if not symbol then
-            vim.notify("Could not find original symbol: " .. identifier.name, vim.log.levels.ERROR)
+    handler.find_symbols(main_buffer_uri, identifiers, function(symbols)
+        if not symbols or #symbols == 0 then
+            vim.notify("Could not find original symbols", vim.log.levels.ERROR)
             return
         end
-        handler.replace_symbol(main_buffer, symbol.range, table.concat(lines, "\n"))
+
+        handler.replace_symbols(main_buffer, symbols, identifiers)
     end)
 end
+
 
 -- In lsp_replace_rules.lua
 function M.dump_document_symbols_to_buffer()
