@@ -195,4 +195,84 @@ function M.stream_window(opts)
 	}
 end
 
+function M.modal_confirm(opts, on_confirm)
+    opts = opts or {}
+    local prompt = opts.prompt or "Confirm changes?"
+    local diff_content = opts.diff_content or ""
+    
+    -- Calculate dimensions
+    local width = math.min(120, vim.api.nvim_get_option("columns"))
+    local height = math.min(40, vim.api.nvim_get_option("lines") - 4)
+    local diff_height = height - 4  -- Reserve space for prompt and buttons
+    
+    -- Create the main modal window and buffer
+    local buf, win_opts = create_centered_float(width, height)
+    local win = api.nvim_open_win(buf, true, win_opts)
+    
+    -- Set buffer options
+    api.nvim_buf_set_option(buf, "buftype", "nofile")
+    api.nvim_buf_set_option(buf, "bufhidden", "wipe")
+    api.nvim_buf_set_option(buf, "modifiable", false)
+    
+    -- Create content
+    local content = {
+        prompt,
+        "",
+    }
+    -- Split diff content into lines and add them
+    local diff_lines = vim.split(diff_content, "\n")
+    vim.list_extend(content, diff_lines)
+    -- Add buttons
+    table.insert(content, "")
+    table.insert(content, "[Y]es    [N]o")
+    
+    -- Set content
+    api.nvim_buf_set_option(buf, "modifiable", true)
+    api.nvim_buf_set_lines(buf, 0, -1, false, content)
+    api.nvim_buf_set_option(buf, "modifiable", false)
+    -- Set up keymaps
+    local function cleanup()
+        if api.nvim_win_is_valid(win) then
+            api.nvim_win_close(win, true)
+        end
+    end
+    
+    -- Set up Yes/No keymaps
+    api.nvim_buf_set_keymap(buf, "n", "y", "", {
+        callback = function()
+            cleanup()
+            on_confirm(true)
+        end,
+        noremap = true,
+        silent = true,
+    })
+    
+    api.nvim_buf_set_keymap(buf, "n", "n", "", {
+        callback = function()
+            cleanup()
+            on_confirm(false)
+        end,
+        noremap = true,
+        silent = true,
+    })
+    
+    -- Set up Escape to cancel (same as No)
+    api.nvim_buf_set_keymap(buf, "n", "<Esc>", "", {
+        callback = function()
+            cleanup()
+            on_confirm(false)
+        end,
+        noremap = true,
+        silent = true,
+    })
+    
+    -- Set up highlighting for the diff content
+    vim.api.nvim_win_set_option(win, "cursorline", false)
+    vim.api.nvim_win_set_option(win, "wrap", false)
+    
+    -- Apply diff syntax highlighting
+    vim.api.nvim_buf_set_option(buf, "syntax", "diff")
+end
+
+
 return M

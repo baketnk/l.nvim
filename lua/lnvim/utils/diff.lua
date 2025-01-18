@@ -55,4 +55,51 @@ function M.applyDiff(originalContent, diffText)
     return result
 end
 
+function M.generate_diff(original_lines, new_lines)
+    -- Write original content to a temporary file
+    local orig_file = os.tmpname()
+    local new_file = os.tmpname()
+    
+    local f = io.open(orig_file, "w")
+    if not f then
+        vim.notify("Failed to create temp file for diff", vim.log.levels.ERROR)
+        return nil
+    end
+    f:write(table.concat(original_lines, "\n"))
+    f:close()
+
+    f = io.open(new_file, "w")
+    if not f then
+        os.remove(orig_file)
+        vim.notify("Failed to create temp file for diff", vim.log.levels.ERROR)
+        return nil
+    end
+    f:write(table.concat(new_lines, "\n"))
+    f:close()
+
+    -- Generate unified diff
+    local cmd = string.format("diff -u %s %s", orig_file, new_file)
+    local handle = io.popen(cmd)
+    if not handle then
+        os.remove(orig_file)
+        os.remove(new_file)
+        vim.notify("Failed to run diff command", vim.log.levels.ERROR)
+        return nil
+    end
+    
+    local result = handle:read("*a")
+    handle:close()
+
+    -- Clean up temporary files
+    os.remove(orig_file)
+    os.remove(new_file)
+
+    -- Process the diff output to make it more readable
+    -- Remove the temp file names from the diff headers
+    result = result:gsub("^%-%-%-[^\n]+\n", "--- Original\n")
+    result = result:gsub("^%+%+%+[^\n]+\n", "+++ Modified\n", 1)
+
+    return result
+end
+
 return M
