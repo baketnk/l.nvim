@@ -14,9 +14,14 @@ N.B.: The plugin interface will change randomly whenever I feel like updating. L
 
 I use lazy.nvim. It's pretty straightforward if you want defaults, see customization if you want overrides.
 
+New: You need `nvim-treesitter` for the LSP replacement to work. Don't forget to `:TSInstall <lang>` for your language's grammar. Currently only works for Zig, more languages by request or as I get to them.
+
 ```
   {
-    "baketnk/l.nvim"
+    "baketnk/l.nvim",
+    dependencies = {
+        "nvim-treesitter"
+    }
   }
 ```
 
@@ -74,6 +79,8 @@ require('lnvim').setup({
 - `<Leader>;;`: Toggle drawer
 - `<Leader>;l`: Chat with LLM
 - `<Leader>;r`: Replace file with code
+- `<Leader>;R`: Replace by LSP matching from codeblock to buffer
+Currently only works for Zig.
 - `<Leader>;m`: Select LLM model
 - `<Leader>;i`: Focus main window
 - `<Leader>;t`: Toggle tool usage
