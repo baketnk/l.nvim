@@ -167,6 +167,7 @@ function M.setup(_opts)
 	if vim.fn.filereadable(project_system_prompt_path) == 0 then
 		vim.fn.system("cp " .. global_system_prompt_path .. " " .. project_system_prompt_path)
 	end
+   state.project_system_prompt_path = project_system_prompt_path
 
 	state.llm_log_path = state.project_lnvim_dir .. "/logs"
 

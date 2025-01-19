@@ -94,7 +94,7 @@ function M.modal_input(opts, on_confirm, on_cancel)
 
 	-- Function to get input
 	local function get_input()
-		return api.nvim_buf_get_lines(input_buf, 0, -1, false)[1]
+		return api.nvim_buf_get_lines(input_buf, 0, -1, false)
 	end
 
 	-- Function to close windows

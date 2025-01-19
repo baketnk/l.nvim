@@ -292,7 +292,7 @@ function M.set_system_prompt()
 			input = { input }
 		end
 		state.system_prompt = input
-		vim.fn.writefile(input, state.project_system_prompt_filepath)
+		vim.fn.writefile(input, state.project_system_prompt_path, "s")
 	end)
 end
 
