@@ -5,6 +5,7 @@ local editor = require("lnvim.ui.editor")
 -- Filetype specific rules
 M.replace_rules = {
     lua = require("lnvim.lsp_rules.lua"),
+    python = require("lnvim.lsp_rules.python"),
     zig = require("lnvim.lsp_rules.zig"),
 }
 
@@ -91,10 +92,11 @@ function M.dump_document_symbols_to_buffer()
                 )
 
                 return string.format(
-                    "%s%s [%s] %s", 
+                    "%s%s [%s](%d) %s", 
                     string.rep("  ", indent), 
                     symbol.name,
                     kind_name,
+                    kind_num,
                     range_str
                 )
             end
