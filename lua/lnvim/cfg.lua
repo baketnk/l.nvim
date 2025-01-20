@@ -67,41 +67,7 @@ M.default_models = {
 		api_key = "ANTHROPIC_API_KEY",
 		use_toolcalling = false,
 	},
-	{
-		model_id = "hermes-3-llama-3.1-405b-fp8",
-		model_type = "openaicompat",
-		api_url = "https://api.lambdalabs.com/v1/chat/completions",
-		api_key = "LAMBDA_API_KEY",
-		use_toolcalling = false,
-	},
-	{
-		model_id = "hermes3",
-		model_type = "openaicompat",
-		api_url = "http://localhost:11434/v1/chat/completions",
-		api_key = "",
-		use_toolcalling = false,
-	},
-	{
-		model_id = "o1-mini",
-		model_type = "openaicompat",
-		api_url = "https://openrouter.ai/api/v1/chat/completions",
-		api_key = "OPENROUTER_API_KEY",
-		use_toolcalling = false,
-	},
-	{
-		model_id = "o1-preview",
-		model_type = "openaicompat",
-		api_url = "https://openrouter.ai/api/v1/chat/completions",
-		api_key = "OPENROUTER_API_KEY",
-		use_toolcalling = false,
-	},
-	{
-		model_id = "gpt-4o-mini",
-		model_type = "openaicompat",
-		api_url = "https://openrouter.ai/api/v1/chat/completions",
-		api_key = "OPENROUTER_API_KEY",
-		use_toolcalling = false,
-	},
+
 	{
 		model_id = "grok-2-1212",
 		model_type = "openaicompat",
@@ -109,13 +75,7 @@ M.default_models = {
 		api_key = "XAI_API_KEY",
 		use_toolcalling = false,
 	},
-   {
-      model_id = "qwen2.5-coder:32b",
-      model_type = "openaicompat",
-      noauth = true,
-      api_url = "http://tforest:11434/v1/chat/completions",
-      use_toolcalling = false,
-   }
+
 }
 
 function M.setup(_opts)
@@ -130,6 +90,9 @@ function M.setup(_opts)
 	for _, model in ipairs(opts.models or M.default_models) do
 		table.insert(state.models, validate_model(model))
 	end
+   for _, model in ipairs(opts.additional_models or {}) do
+      table.insert(state.models, validate_model(model))
+   end
 
 	state.autocomplete = opts.autocomplete or {
 		max_tokens = 300,

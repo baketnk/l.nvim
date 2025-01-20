@@ -21,7 +21,8 @@ New: You need `nvim-treesitter` for the LSP replacement to work. Don't forget to
     "baketnk/l.nvim",
     dependencies = {
         "nvim-treesitter"
-    }
+    },
+    opts = {}
   }
 ```
 
@@ -50,19 +51,16 @@ require('lnvim').setup({
 
 
 
-### Default Model Configuration
+### Default Model Configurations
 
+You can either override this list with `opts.models` or just add additional models with `opts.additional_models`. 
 
 
 | Model ID | Model Type | API URL | API Key | Use Toolcalling |
 |----------|------------|---------|---------|-----------------|
+| claude-3-5-sonnet-latest | anthropic | https://api.anthropic.com/v1/messages | ANTHROPIC_API_KEY | false |
 | claude-3-5-sonnet-20240620 | anthropic | https://api.anthropic.com/v1/messages | ANTHROPIC_API_KEY | false |
 | claude-3-opus-20240229 | anthropic | https://api.anthropic.com/v1/messages | ANTHROPIC_API_KEY | false |
-| hermes-3-llama-3.1-405b-fp8 | openaicompat | https://api.lambdalabs.com/v1/chat/completions | LAMBDA_API_KEY | false |
-| hermes3 | openaicompat | http://localhost:11434/v1/chat/completions |  | false |
-| o1-mini | openaicompat | https://openrouter.ai/api/v1/chat/completions | OPENROUTER_API_KEY | false |
-| o1-preview | openaicompat | https://openrouter.ai/api/v1/chat/completions | OPENROUTER_API_KEY | false |
-| gpt-4o-mini | openaicompat | https://openrouter.ai/api/v1/chat/completions | OPENROUTER_API_KEY | false |
 | x-ai/grok-2 | openaicompat | https://openrouter.ai/api/v1/chat/completions | OPENROUTER_API_KEY | false |
 
 
