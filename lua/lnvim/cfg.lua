@@ -75,6 +75,20 @@ M.default_models = {
 		api_key = "XAI_API_KEY",
 		use_toolcalling = false,
 	},
+{
+   model_id = "deepseek-chat",
+      model_type = "openaicompat",
+      api_key = "DEEPSEEK_API_KEY",
+      api_url = "https://api.deepseek.com/v1/chat/completions",
+      use_toolcalling = false,
+   },
+{
+   model_id = "deepseek-reasoner",
+      model_type = "openaicompat",
+      api_key = "DEEPSEEK_API_KEY",
+      api_url = "https://api.deepseek.com/v1/chat/completions",
+      use_toolcalling = false,
+   },
 
 }
 

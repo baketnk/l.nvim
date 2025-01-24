@@ -203,8 +203,19 @@ function M.write_string_at_llmstream(str)
 		)
 		local row, col = extmark[3].end_row or -1, extmark[3].end_col or -1
 		-- delimit
+      if type(str) ~= "string" then
+            local err_msg = string.format(
+                "Error: Expected string but got %s\nValue: %s",
+                type(str),
+                vim.inspect(str)
+            )
+            vim.notify(err_msg, vim.log.levels.ERROR)
+            vim.print(vim.inspect(str))
+            return
+        end
 
-		local lines = vim.split(str, "\n", {})
+        -- delimit
+        local lines = vim.split(str, "\n", {})
 
 		pcall(vim.cmd.undojoin)
 		api.nvim_buf_set_text(buffers.diff_buffer, row, col, row, col, lines)
@@ -312,8 +323,12 @@ function M.handle_openai_data(data_stream, event_state)
 		return vim.json.decode(data_stream)
 	end)
 	if json_ok and json.choices and json.choices[1] and json.choices[1].delta then
-		local content = json.choices[1].delta.content
-		if content then
+      local content = json.choices[1].delta.content
+      if content == vim.NIL and json.choices[1].delta.reasoning_content then
+         content = json.choices[1].delta.reasoning_content
+      end
+		if content and content ~= vim.NIL then
+         vim.print(vim.inspect(json))
 			M.write_string_at_llmstream(content)
 		end
 	elseif data_stream:match("%[DONE%]") then
@@ -432,7 +447,7 @@ function M.call_llm(args, handler)
 		active_job = nil
 	end
 	local first_run = true
-	-- vim.print("Full curl command: curl " .. table.concat(args, " "))
+	vim.print("Full curl command: curl " .. table.concat(args, " "))
 	active_job = Job:new({
 		command = "curl",
 		args = args,
