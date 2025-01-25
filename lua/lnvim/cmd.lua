@@ -260,6 +260,15 @@ function M.select_files_for_prompt()
 	return helpers.select_files_for_prompt(false, false, on_select)
 end
 
+function M.select_all_files_for_prompt()
+	local function on_select(selected_files)
+		state.update_files(selected_files)
+		layout.update_summary()
+	end
+
+	return helpers.select_files_for_prompt(true, true, on_select)
+end
+
 function M.yank_codeblock()
 	return editor.yank_codeblock()
 end

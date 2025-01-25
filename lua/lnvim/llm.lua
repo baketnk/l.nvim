@@ -626,4 +626,35 @@ function M.call_model(name, prompt, callback, error_callback)
 	}):start()
 end
 
+-- Add this function to handle focused queries without chat context
+function M.focused_query(opts, callback)
+    local messages = {
+        {role = "system", content = opts.system_prompt},
+        {role = "user", content = opts.prompt}
+    }
+    
+    local temp_buf = api.nvim_create_buf(false, true)
+    local args = generate_args(state.current_model, nil, nil, messages, false)
+    
+    local response = ""
+    Job:new({
+        command = "curl",
+        args = args,
+        on_stdout = function(_, data)
+            if state.current_model.model_type == "anthropic" then
+                response = response .. data
+            else
+                local json_ok, json = pcall(vim.json.decode, data)
+                if json_ok and json.choices then
+                    response = response .. (json.choices[1].message.content or "")
+                end
+            end
+        end,
+        on_exit = function()
+            api.nvim_buf_delete(temp_buf, {force = true})
+            callback(response)
+        end
+    }):sync()
+end
+
 return M

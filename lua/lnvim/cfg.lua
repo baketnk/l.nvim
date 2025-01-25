@@ -26,7 +26,11 @@ function M.make_plugKey(name, mode, keys, func, opts)
 	local full_name = constants.plugin_name .. name
 	vim.keymap.set(mode, "<Plug>" .. full_name .. ";", func, opts)
 	if state.keymap_prefix ~= "" then
-		vim.keymap.set(mode, state.keymap_prefix .. keys, func, opts)
+      if mode ~= "i" then
+		   vim.keymap.set(mode, state.keymap_prefix .. keys, func, opts)
+      else
+		   vim.keymap.set(mode, keys, func, opts)
+      end
 	end
 end
 
@@ -110,21 +114,38 @@ function M.setup(_opts)
 
 	state.autocomplete = opts.autocomplete or {
 		max_tokens = 300,
-		temperature = 0.5,
+		temperature = 0.3,
 	}
 
 	state.autocomplete_model = opts.autocomplete_model
-		or {
-			model_id = "qwen2.5-coder:3b",
-			model_type = "openai",
-			api_url = "http://localhost:11434/v1/completions",
-			-- api_key = "",
-		}
-   require("lnvim.autocomplete")
+		or 
+      {
+   model_id = "deepseek-chat",
+      model_type = "openaicompat",
+      api_key = "DEEPSEEK_API_KEY",
+      api_url = "https://api.deepseek.com/v1/chat/completions",
+      use_toolcalling = false,
+   }
+   local autocomplete = require("lnvim.autocomplete")
 	state.wtf_model = opts.wtf_model or "llama3.2:3b"
+    local model_exists = vim.tbl_contains(
+        vim.tbl_map(function(m) return m.model_id end, state.models),
+        state.wtf_model
+    )
+    
+    if not model_exists then
+        vim.notify("wtf_model '"..state.wtf_model.."' not found in configured models", vim.log.levels.WARN)
+        state.wtf_model = state.models[1].model_id
+    end
 
 	state.current_model = state.models[1]
 	state.default_prompt_path = opts.default_prompt_path or os.getenv("HOME") .. "/.local/share/lnvim/"
+
+   state.memex_path = opts.memex_path or (state.default_prompt_path .. "/memex")
+if vim.fn.isdirectory(state.memex_path) == 0 then
+        vim.fn.mkdir(state.memex_path, "p")
+        vim.fn.mkdir(state.memex_path .. "/notes", "p")
+    end
 	state.project_root = M.get_project_root()
 	state.project_lnvim_dir = state.project_root .. "/.lnvim"
 	if vim.fn.isdirectory(state.project_lnvim_dir) == 0 then
@@ -189,17 +210,24 @@ function M.setup(_opts)
 	M.make_plugKey("SetSystemPrompt", "n", "s", lcmd.set_system_prompt, { desc = "Set system prompt" })
 	M.make_plugKey("SetPromptFile", "n", "f", lcmd.select_files_for_prompt, { desc = "Select prompt files" })
 	M.make_plugKey(
-		"EnumerateProjectFiles",
+		"SetAllFiles",
 		"n",
 		"F",
-		lcmd.enumerate_project_files,
-		{ desc = "Enumerate project files" }
+		lcmd.select_all_files_for_prompt,
+		{ desc = "Select hidden/ignored files" }
 	)
 	M.make_plugKey("LspIntrospect", "n", "/", lcmd.lsp_introspect, { desc = "LSP Introspection" })
 	M.make_plugKey("Next", "n", "j", lcmd.next_magic, { desc = "Next code block" })
 	M.make_plugKey("Prev", "n", "k", lcmd.previous_magic, { desc = "Previous code block" })
 	M.make_plugKey("OpenClose", "n", ";", lcmd.open_close, { desc = "Toggle drawer" })
 	M.make_plugKey("LLMChat", "n", "l", lcmd.chat_with_magic, { desc = "Chat with LLM" })
+
+	M.make_plugKey("SelectModel", "n", "m", lcmd.select_model, { desc = "Select LLM model" })
+
+   M.make_plugKey("Autocomplete", "i", "<C-;>", autocomplete.call_autocomplete, { desc = "autocomplete" })
+   M.make_plugKey("AutocompleteLine", "i", "<C-'>", autocomplete.insert_next_line, { desc = "AC insert line" })
+   M.make_plugKey("AutocompleteAll", "i", "<C-p>", autocomplete.insert_whole_suggestion, { desc = "AC insert suggestion" })
+
 	M.make_plugKey("ReplaceFile", "n", "r", lcmd.replace_file_with_codeblock, { desc = "Replace file with code" })
    M.make_plugKey("SmartReplaceCodeblock", "n", "R", lcmd.smart_replace_with_codeblock, { desc = "Smart replace code block" })
 	M.make_plugKey("SelectToPrompt", "x", "p", lcmd.selection_to_prompt, { desc = "copy selection to end of prompt" })
@@ -210,7 +238,7 @@ function M.setup(_opts)
 		lcmd.selection_to_prompt_wrapped,
 		{ desc = "copy selection to end of prompt in codeblock" }
 	)
-	M.make_plugKey("SelectModel", "n", "m", lcmd.select_model, { desc = "Select LLM model" })
+
 	M.make_plugKey("ClearAllBuffers", "n", "dg", function()
 		lcmd.clear_buffers("all")
 	end, { desc = "Clear all buffers" })
@@ -220,17 +248,16 @@ function M.setup(_opts)
 	M.make_plugKey("ClearFilesList", "n", "df", function()
 		lcmd.clear_buffers("f")
 	end, { desc = "Clear files buffer" })
-	M.make_plugKey("FocusMain", "n", "i", lcmd.focus_main_window, { desc = "Focus main window" })
-	M.make_plugKey("ToggleToolUsage", "n", "t", require("lnvim.toolcall").tools_toggle, { desc = "Toggle tool usage" })
-	M.make_plugKey(
-		"ShellToPrompt",
-		"n",
-		"p",
-		lcmd.shell_to_prompt,
-		{ desc = "Run shell command and add output to prompt" }
-	)
 
-	M.make_plugKey("ApplyDiff", "n", "a", lcmd.apply_diff_to_buffer, { desc = "Apply diff to buffer" })
+	M.make_plugKey("FocusMain", "n", "i", lcmd.focus_main_window, { desc = "Focus main window" })
+
+   -- In cfg.lua's setup function:
+   M.make_plugKey("MemexNewNote", "n", "n", require("lnvim.memex").new_note_modal, { desc = "Create new memex note" })
+   M.make_plugKey("MemexSearchNotes", "n", "N", require("lnvim.memex").search_notes, { desc = "Search memex notes" })
+   M.make_plugKey("MemexInsertNote", "n", "in", require("lnvim.memex").insert_note, { desc = "Insert memex note" })
+   M.make_plugKey("MemexGlobalSearch", "n", "sn", require("lnvim.memex").global_search, { desc = "Search memex content" })
+
+	M.make_plugKey("ToggleToolUsage", "n", "t", require("lnvim.toolcall").tools_toggle, { desc = "Toggle tool usage" })
 	M.make_plugKey(
 		"ShellToPrompt",
 		"n",

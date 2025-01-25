@@ -8,6 +8,16 @@ local state = require("lnvim.state")
 local consts = require("lnvim.constants")
 local source = {}
 
+M.config = {
+    highlight = {
+        suggestion = "Comment", -- highlight group for suggestions
+    },
+    display = {
+        position = 'inline', -- 'inline' or 'eol'
+        max_suggestions = 3, -- maximum number of suggestions to show
+    }
+}
+
 -- this function is taken from https://github.com/yasuoka/stralnumcmp/blob/master/stralnumcmp.lua
 local function stralnumcmp(a, b)
   local a0, b0, an, bn, as, bs, c
@@ -33,6 +43,8 @@ local function stralnumcmp(a, b)
   return (a0:len() - b0:len())
 end
 
+
+
 function source:is_available()
    return true
 end
@@ -46,126 +58,341 @@ function source:get_trigger_characters()
    return { } -- "{", "}", "(", ")", "[", "]" }
 end
 
-local function get_context(params, maxLength)
+-- greetz to avante
+local function format_line_number(lines, start_line)
+   if start_line == nil then
+      start_line = 1
+   end
+   start_line = start_line - 1
+   local result = {}
+   for i, val in ipairs(lines) do
+      table.insert(result, "Line" .. (i+start_line) .. ": " .. val)
+   end
+   return table.concat(result, "\n")
+end
+
+local function format_code(filename, lines, start_line)
+   return table.concat({
+      "<file>" ..
+      "<filepath>" .. filename .. "</filepath>" ..
+      "<code>" ..
+      format_line_number(lines, start_line) ..
+      "</code>" ..
+      "</file>"
+   }, "\n")
+end
+
+
+
+local function make_template()
+   return {
+      { role = "system",
+       content = [[
+Your task is to suggest code modifications at the cursor position. Follow these instructions meticulously:
+  1. Carefully analyze the original code, paying close attention to its structure and the cursor position.
+  2. You must follow this JSON format when suggesting modifications:
+    ```
+    [
+      [
+        {
+          "start_row": ${start_row},
+          "end_row": ${end_row},
+          "content": "Your suggested code here"
+        },
+        {
+          "start_row": ${start_row},
+          "end_row": ${end_row},
+          "content": "Your suggested code here"
+        }
+      ],
+      [
+        {
+          "start_row": ${start_row},
+          "end_row": ${end_row},
+          "content": "Your suggested code here"
+        },
+        {
+          "start_row": ${start_row},
+          "end_row": ${end_row},
+          "content": "Your suggested code here"
+        }
+    ]
+    ```
+
+    JSON fields explanation:
+      start_row: The starting row of the code snippet you want to replace, start from 1, inclusive
+      end_row: The ending row of the code snippet you want to replace, start from 1, inclusive
+      content: The suggested code you want to replace the original code with
+
+Guidelines:
+  1. Make sure you have maintained the user's existing whitespace and indentation. This is REALLY IMPORTANT!
+  2. Each code snippet returned in the list must not overlap, and together they complete the same task.
+  3. The more code snippets returned at once, the better.
+  4. If there is incomplete code on the current line where the cursor is located, prioritize completing the code on the current line.
+  5. DO NOT include three backticks: '```' in your suggestion. Treat the suggested code AS IS.
+  6. Each element in the returned list is a COMPLETE code snippet.
+  7. MUST be a valid JSON format. DO NOT be lazy!
+  8. Only return the new code to be inserted. DO NOT be lazy!
+  9. Please strictly check the code around the position and ensure that the complete code after insertion is correct. DO NOT be lazy!
+  10. Do not return the entire file content or any surrounding code. Only return the suggested code.
+  11. Do not include any explanations, comments, or line numbers in your response.
+  12. Ensure the suggested code fits seamlessly with the existing code structure and indentation.
+  13. If there are no recommended modifications, return an empty list.
+  14. Remember to ONLY RETURN the suggested code snippet, without any additional formatting or explanation.
+  15. The returned code must satisfy the context, especially the context where the current cursor is located.
+  16. Each line in the returned code snippet is complete code; do not include incomplete code.
+       ]]
+    },
+         {
+            role = "user",
+            content = [[
+      <filepath>a.py</filepath>
+      <code>
+      L1: def fib
+      L2:
+      L3: if __name__ == "__main__":
+      L4:    # just pass
+      L5:    pass
+      </code>
+            ]],
+          },
+          {
+            role = "assistant",
+            content = "ok",
+          },
+          {
+            role = "user",
+            content = '<question>{ "indentSize": 4, "position": { "row": 1, "col": 2 } }</question>',
+          },
+          {
+            role = "assistant",
+            content = [[
+      [
+        [
+          {
+            "start_row": 1,
+            "end_row": 1,
+            "content": "def fib(n):\n    if n < 2:\n        return n\n    return fib(n - 1) + fib(n - 2)"
+          },
+          {
+            "start_row": 4,
+            "end_row": 5,
+            "content": "    fib(int(input()))"
+          },
+        ],
+        [
+          {
+            "start_row": 1,
+            "end_row": 1,
+            "content": "def fib(n):\n    a, b = 0, 1\n    for _ in range(n):\n        yield a\n        a, b = b, a + b"
+          },
+          {
+            "start_row": 4,
+            "end_row": 5,
+            "content": "    list(fib(int(input())))"
+          },
+        ]
+      ]
+            ]],
+          },
+      }
+end
+
+local function estimate_token_length(s)
+   return #s / 4
+end
+
+local function generate_messages(params, targetLength, maxLength)
+    local messages = make_template()
     local nvim_buf_get_lines = vim.api.nvim_buf_get_lines
     local nvim_buf_line_count = vim.api.nvim_buf_line_count
 
     local bufnr = params.context.bufnr
+    local filepath = vim.api.nvim_buf_get_name(bufnr)
     local cursor = params.context.cursor
     
     local row, col = cursor.row, cursor.col
-    local totalLines = nvim_buf_line_count(bufnr)
 
-    -- Function to get text before cursor (excluding current line)
-    local function getTextBefore()
-        if row <= 0 then return "" end
-        
-        local startRow = math.max(0, row - 10) -- Get up to 10 lines before
-        local lines = nvim_buf_get_lines(bufnr, startRow, row, false)
-        
-        local textBefore = table.concat(lines, "\n")
-        -- Limit the length from the end (as we want the most recent context)
-        return string.sub(textBefore, -maxLength)
-    end
+    local indentSize = vim.api.nvim_get_option_value("tabstop", { buf = bufnr })
 
-    -- Function to get text after cursor (excluding current line)
-    local function getTextAfter()
-        if row >= totalLines - 1 then return "" end
-        
-        local endRow = math.min(totalLines, row + 11) -- Get up to 10 lines after
-        local lines = nvim_buf_get_lines(bufnr, row + 1, endRow, false)
-        
-        local textAfter = table.concat(lines, "\n")
-        -- Limit the length from the start
-        return string.sub(textAfter, 1, maxLength)
-    end
+    -- get current file (todo: reduce length? limit scope to LSP?)
+    table.insert(messages,
+      {
+         role = "user",
+         content = format_code(filepath, nvim_buf_get_lines(bufnr, 0, -1, false), 0)
+      })
+      table.insert(messages, 
+      { 
+         role = "assistant", content = "ok" 
+      })
+      table.insert(messages,
+      {
+         role = "user",
+         content = ' <question>{ "indentSize": ' .. indentSize .. ', "row": ' .. row .. ', "col": ' .. col .. '}</question>'
+      })
 
-    return getTextBefore(), getTextAfter()
+      -- TODO: LSP link from current function
+   return messages
 end
 
-function source:complete(params, callback)
-    vim.print("called lnvim autocomplete")
-    vim.print(vim.inspect(params))
-    -- Use the params object to get context instead of direct buffer access
-    local cursor_line = params.context
-    local cursor_col = params.context.cursor.col
+M.AUTOCOMPLETE_NS = vim.api.nvim_create_namespace("lnvim.autcomplete")
+M.extmark = nil
+M.suggestions = {}  -- Store the current suggestions
+M.current_suggestion_index = 1  -- Track the current suggestion index
 
-    -- Get the lines before the cursor
-    local lines_before, lines_after = get_context(params, 1024) -- gotta find this constant
-vim.print("Lines before:", lines_before)
-vim.print("Lines after:", lines_after)
-    -- Construct the prompt with proper context
-    local prompt = "<|fim_prefix|>" .. lines_before .. params.context.cursor_before_line .. "<|fim_suffix>" .. params.context.cursor_after_line .. lines_after .. "<|fim_middle|>"
-    vim.print(prompt)
+
+
+function M.call_autocomplete()
+
+    local bufnr = vim.api.nvim_get_current_buf()
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    local row, col = unpack(cursor)
+    local params = {
+        context = {
+            bufnr = bufnr,
+            cursor = {
+                row = row,
+                col = col
+            }
+        }
+    }
 
     -- Create a wrapper for the callback to format the response properly
     local function handle_completion(text)
-        vim.print("handle completion callback -> cmp")
-        if text and text ~= "" then
-            local items = {}
-            -- Split the completion into lines
-            local lines = vim.split(text, "\n")
-            for _, line in ipairs(lines) do
-                if line ~= "" then
-                    table.insert(items, {
-                        label = line,
-                        insertText = line,
-                        kind = cmp.lsp.CompletionItemKind.Text,
-                        documentation = {
-                            kind = cmp.lsp.MarkupKind.Markdown,
-                            value = text
-                        }
-                    })
-                end
+        text = text:gsub("^```%w*\n(.-)\n```$", "%1")
+        text = text:gsub("(.-)\n```\n?$", "%1")
+        text = text:gsub("^.-(%[.*)", "%1")
+        vim.print(text)
+        if not text then
+           vim.print("text is garbo")
+           return
+        end
+        -- Clear existing extmarks
+        if M.extmark then
+            for _, extmark in ipairs(M.extmark) do
+                vim.api.nvim_buf_del_extmark(bufnr, M.AUTOCOMPLETE_NS, extmark)
             end
-            callback(items)
-        else
-            callback(nil)
+            M.extmark = nil
+        end
+
+        if text and text ~= "" then
+            -- Parse the JSON response
+            local ok, parsed = pcall(vim.json.decode, text)
+            if not ok then
+                vim.notify("Failed to parse completion response", vim.log.levels.ERROR)
+                vim.print(text)
+                return
+            end
+
+            -- Create virtual text for each suggestion
+            M.extmark = {}
+            local suggestions = parsed[1] -- Take first set of suggestions
+            M.suggestions = parsed[1] or {}
+            M.current_suggestion_index = 1
+
+            if M.suggestions then
+                for _, suggestion in ipairs(suggestions) do
+                    -- Split content into lines
+                    local lines = vim.split(suggestion.content, "\n")
+                    local start_row = suggestion.start_row - 1 -- Convert to 0-based index
+                    local end_row = suggestion.end_row - 1 -- Convert to 0-based index
+
+                    for i, line in ipairs(lines) do
+                        local row_idx = start_row + i - 1
+                        if row_idx <= end_row then
+                            local extmark_id = vim.api.nvim_buf_set_extmark(bufnr, M.AUTOCOMPLETE_NS, row_idx, 0, {
+                                virt_text = {{line, "Comment"}},
+                                virt_text_pos = 'inline', -- or 'eol' for end of line
+                                priority = 1000,
+                                hl_mode = 'combine',
+                            })
+                            table.insert(M.extmark, extmark_id)
+                        end
+                        pcall(function()
+                            local extmark_id = vim.api.nvim_buf_set_extmark(bufnr, M.AUTOCOMPLETE_NS, end_row+1, 0, {
+                                virt_text = {{"", "Comment"}},
+                                virt_text_pos = 'inline', -- or 'eol' for end of line
+                                priority = 1000,
+                                hl_mode = 'combine',
+                            })
+                            table.insert(M.extmark, extmark_id)
+                         end)
+                    end
+                end
+            else 
+               vim.print("no suggestion")
+               vim.print(parsed)
+            end
+
+            -- Setup autocommands to clear extmarks
+            vim.api.nvim_create_autocmd({"InsertChange", "CursorMoved"}, {
+                buffer = bufnr,
+                callback = function()
+                    if M.extmark then
+                        for _, extmark in ipairs(M.extmark) do
+                            vim.api.nvim_buf_del_extmark(bufnr, M.AUTOCOMPLETE_NS, extmark)
+                        end
+                        M.extmark = nil
+                    end
+                end,
+            })
+
         end
     end
 
-    M.autocomplete(prompt, state.autocomplete_model, handle_completion)
+    local messages = generate_messages(params, 1024, 2048)
+
+    M.autocomplete(messages, state.autocomplete_model, params, handle_completion)
 end
 
-
-function source:resolve(item, callback)
-   callback(item)
-end
-
-function source:execute(completion_item, callback)
-    -- Get the current line text before cursor
-    local cursor_line = vim.api.nvim_get_current_line()
-    local cursor_pos = vim.api.nvim_win_get_cursor(0)
-    local _, col = cursor_pos[1], cursor_pos[2]
-    
-    -- Get the text before cursor on current line
-    local text_before = string.sub(cursor_line, 1, col)
-    
-    -- Get the completion text from the item
-    local completion_text = completion_item.insertText or completion_item.label
-    
-    -- Find the common prefix between what's already typed and the completion
-    local common_length = 0
-    while common_length < #text_before and common_length < #completion_text do
-        if stralnumcmp(string.sub(text_before, -common_length), string.sub(completion_text, 1, common_length)) == 0 then
-            common_length = common_length + 1
-        else
-            break
-        end
+function M.insert_next_line()
+    if not M.suggestions or #M.suggestions == 0 then
+        vim.notify("No suggestions available", vim.log.levels.WARN)
+        return
     end
-    
-    -- Extract only the new text to insert (excluding what's already typed)
-    local text_to_insert = string.sub(completion_text, common_length + 1)
-    
-    -- Create a modified completion item with the correct text to insert
-    local modified_item = vim.deepcopy(completion_item)
-    modified_item.insertText = text_to_insert
-    
-    callback(modified_item)
+
+    local suggestion = M.suggestions[M.current_suggestion_index]
+    if not suggestion then
+        vim.notify("No more suggestions", vim.log.levels.WARN)
+        return
+    end
+
+    local lines = vim.split(suggestion.content, "\n")
+    local current_line = lines[1]
+    table.remove(lines, 1)  -- Remove the first line
+
+    -- Insert the current line at the cursor position
+    local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+    vim.api.nvim_buf_set_lines(0, row - 1, row - 1, false, {current_line})
+
+    -- Update the suggestion content with the remaining lines
+    suggestion.content = table.concat(lines, "\n")
+
+    -- If there are no more lines, move to the next suggestion
+    if #lines == 0 then
+        M.current_suggestion_index = M.current_suggestion_index + 1
+    end
 end
 
+function M.insert_whole_suggestion()
+    if not M.suggestions or #M.suggestions == 0 then
+        vim.notify("No suggestions available", vim.log.levels.WARN)
+        return
+    end
 
+    local suggestion = M.suggestions[M.current_suggestion_index]
+    if not suggestion then
+        vim.notify("No more suggestions", vim.log.levels.WARN)
+        return
+    end
 
+    -- Insert the whole suggestion at the cursor position
+    local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+    vim.api.nvim_buf_set_lines(0, row - 1, row - 1, false, vim.split(suggestion.content, "\n"))
+
+    -- Move to the next suggestion
+    M.current_suggestion_index = M.current_suggestion_index + 1
+end
 
 local function generate_autocomplete_args(model, prompt)
    vim.print("ac args")
@@ -180,18 +407,23 @@ local function generate_autocomplete_args(model, prompt)
 
 	if model.api_key then
 		table.insert(args, "-H")
-		table.insert(args, "Authorization: Bearer " .. os.getenv(model.api_key))
+		table.insert(args, "Authorization: Bearer " .. os.getenv(model.api_key or ""))
 	end
 
 	local data = {
 		model = model.model_id,
-		prompt = prompt,
+		messages = prompt,
 		max_tokens = state.autocomplete.max_tokens,
 		temperature = state.autocomplete.temperature,
-		stop = [[\n]], -- Stop at newline
+		-- stop = [[\n]], -- Stop at newline
 		stream = true,
 	}
-
+   if model.model_type == "anthropic" then
+		local system_message = table.remove(data.messages, 1)
+		data.system = system_message.content
+		table.insert(args, "-H")
+		table.insert(args, "anthropic-version: 2023-06-01")
+   end
 	table.insert(args, "-d")
 	table.insert(args, vim.json.encode(data))
 	table.insert(args, model.api_url)
@@ -200,40 +432,86 @@ local function generate_autocomplete_args(model, prompt)
 end
 
 
-function M.autocomplete(prompt, model, callback)
-	local args = generate_autocomplete_args(model, prompt)
-   vim.print(args)
+function M.autocomplete(messages, model, params, callback)
+   local args = generate_autocomplete_args(model, messages)
    local completion = ""
-	local function handle_data(data)
-		vim.print(vim.inspect(data))
-		local json_string = data:match("^data: (.+)$")
-		if not json_string then
-			return
-		end
+   local partial_json = ""
+   local tool_name = ""
+   
+   local bufnr = params.context.bufnr
+   
+   M.extmark = { vim.api.nvim_buf_set_extmark(bufnr, M.AUTOCOMPLETE_NS, params.context.cursor.row - 1, params.context.cursor.col, {
+                virt_text = {{ "loading", "Comment"}},
+                virt_text_pos = 'inline', -- or 'eol' for end of line
+                priority = 1000,
+                hl_mode = 'combine',
+            }) }
 
-		local json_ok, json = pcall(vim.json.decode, json_string)
-		if json_ok then
-			if json.choices and json.choices[1] and json.choices[1].text then
-				local content = json.choices[1].text
-				if content then
-					completion = completion .. content
-					-- Print each new line as it's streamed
-					local lines = vim.split(content, "\n")
-					for _, line in ipairs(lines) do
-						if line ~= "" then
-							print("New line: " .. line)
-						end
-					end
-				end
-			elseif json.error then
-				state.status = "AC ERROR"
-				vim.notify(vim.inspect(json.error))
-			end
-		elseif data:match("%[DONE%]") then
-			state.status = "Idle"
-			callback(completion)
-		end
-	end
+	local function handle_data(data)
+        if not data then
+           return
+        end
+        local json_string = data:match("^data: (.+)$")
+        if not json_string then
+            return
+        end
+
+        local json_ok, json = pcall(vim.json.decode, json_string)
+        if not json_ok then
+            if json_string:match("%[DONE%]") then
+                state.status = "Idle"
+                vim.schedule(function()
+                   callback(completion)
+                end)
+                return
+             else
+            vim.notify("Failed to parse JSON: " .. json_string, vim.log.levels.ERROR)
+            return
+         end
+        end
+
+        -- Handle Anthropic API response
+        if model.model_type == "anthropic" then
+            if json.type == "error" then
+                state.status = "AC ERROR"
+                vim.notify("Anthropic API Error: " .. vim.inspect(json.error), vim.log.levels.ERROR)
+            elseif json.type == "content_block_start" then
+                if json.content_block and json.content_block.type == "tool_use" then
+                    tool_name = json.content_block.name or tool_name or "Unknown"
+                end
+                partial_json = ""
+            elseif json.type == "content_block_delta" then
+                if json.delta and json.delta.type == "input_json_delta" then
+                    partial_json = partial_json .. (json.delta.partial_json or "")
+                elseif json.delta and json.delta.text then
+                    completion = completion .. json.delta.text
+                end
+            elseif json.type == "content_block_stop" then
+                state.status = "Idle"
+                vim.schedule(function()
+                   callback(completion)
+                end)
+            end
+        -- Handle OpenAI API response
+        else
+            if json.choices and json.choices[1] and json.choices[1].delta then
+                local content = json.choices[1].delta.content
+                if content then
+                    completion = completion .. content
+                end
+            elseif json.error then
+               vim.schedule(function()
+                  state.status = "AC ERROR"
+                  vim.notify("API Error: " .. vim.inspect(json.error), vim.log.levels.ERROR)
+               end)
+            elseif json_string:match("%[DONE%]") then
+                state.status = "Idle"
+                vim.schedule(function()
+                   callback(completion)
+                end)
+            end
+        end
+    end
 	local first_run = true
 	Job:new({
 		command = "curl",
@@ -245,7 +523,9 @@ function M.autocomplete(prompt, model, callback)
 				first_run = false
 				state.status = "AC Stream"
 			end
-			handle_data(out)
+         vim.schedule(function()
+			   handle_data(out)
+         end)
 		end,
 		on_stderr = function(_, err)
 			state.status = "AC Error"

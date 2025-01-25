@@ -85,9 +85,9 @@ You can either override this list with `opts.models` or just add additional mode
    - **Keybinding**: `<Leader>;f`
    - **Description**: Select prompt files.
 
-4. **`EnumerateProjectFiles`**
+4. **`SetAllFiles`**
    - **Keybinding**: `<Leader>;F`
-   - **Description**: Enumerate project files. (WIP)
+   - **Description**: Select hidden/ignored files for prompt.
 
 5. **`LspIntrospect`**
    - **Keybinding**: `<Leader>;/`
