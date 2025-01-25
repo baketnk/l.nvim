@@ -124,8 +124,6 @@ function M.setup(_opts)
 	state.wtf_model = opts.wtf_model or "llama3.2:3b"
 
 	state.current_model = state.models[1]
-	state.max_prompt_length = opts.max_prompt_length or 16000
-
 	state.default_prompt_path = opts.default_prompt_path or os.getenv("HOME") .. "/.local/share/lnvim/"
 	state.project_root = M.get_project_root()
 	state.project_lnvim_dir = state.project_root .. "/.lnvim"
