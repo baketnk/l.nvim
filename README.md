@@ -161,18 +161,35 @@ You can either override this list with `opts.models` or just add additional mode
     - **Keybinding**: `<Leader>;w` (in visual mode)
     - **Description**: Stream selected text through qask. (WIP/Undocumented)
 
-23. **`DumpSymbols`**
-    - **Keybinding**: `<Leader>;S`
-    - **Description**: Dump LSP symbols to buffer. (Debugging)
+### Cache Control (Anthropic Only)
 
+- **`CacheOnlyFiles`**
+  - **Keybinding**: `<Leader>;c`
+  - **Description**: Select files to be cached but not included in prompts. Useful for maintaining context without cluttering the chat.
+
+### Developer Tools
+
+The following commands are available for plugin development and debugging:
+
+- **`DevToggleDebug`**
+  - **Keybinding**: `<Leader>;ud`
+  - **Description**: Toggle developer debug logging mode.
+
+- **`DevOpenLogs`**
+  - **Keybinding**: `<Leader>;ul`
+  - **Description**: Open the developer debug logs in a split window.
+
+- **`DevClearLogs`**
+  - **Keybinding**: `<Leader>;uc`
+  - **Description**: Clear the developer debug logs.
+
+- **`DumpSymbols`**
+  - **Keybinding**: `<Leader>;uS`
+  - **Description**: Dump LSP symbols from current buffer to debug buffer. Useful for debugging LSP integration.
 
 ## Contributing
 
 Contributions are welcome, feel free to submit issues or PRs.
-
-## Sponsors
-
-For fun project at this point, if I leave the day job may look into this route.
 
 ## License
 

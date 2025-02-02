@@ -93,7 +93,13 @@ M.default_models = {
       api_url = "https://api.deepseek.com/v1/chat/completions",
       use_toolcalling = false,
    },
-
+{
+   model_id = "llama3.2:3b",
+      model_type = "openaicompat",
+      noauth = true,
+      api_url = "https://localhost:11434/v1/chat/completions",
+      use_toolcalling = false,
+   },
 }
 
 function M.setup(_opts)
@@ -239,6 +245,14 @@ if vim.fn.isdirectory(state.memex_path) == 0 then
 		{ desc = "copy selection to end of prompt in codeblock" }
 	)
 
+   M.make_plugKey(
+       "CacheOnlyFiles",
+       "n",
+       "c",
+       require("lnvim.cache").select_cache_only_files,
+       { desc = "Select files for cache-only" }
+   )
+
 	M.make_plugKey("ClearAllBuffers", "n", "dg", function()
 		lcmd.clear_buffers("all")
 	end, { desc = "Clear all buffers" })
@@ -277,9 +291,46 @@ if vim.fn.isdirectory(state.memex_path) == 0 then
 M.make_plugKey(
     "DumpSymbols",
     "n",
-    "S",  -- or whatever key you prefer
+    "uS",  -- or whatever key you prefer
     require("lnvim.lsp_replace_rules").dump_document_symbols_to_buffer,
     { desc = "Dump LSP symbols to buffer" }
+)
+
+-- Add development-related keymaps
+M.make_plugKey(
+    "DevToggleDebug",
+    "n",
+    "ud", -- <Leader>;dd for "dev debug"
+    require("lnvim.utils.logger").toggle_debug_mode,
+    { desc = "Toggle developer debug logging" }
+)
+
+M.make_plugKey(
+    "DevOpenLogs",
+    "n", 
+    "ul", -- <Leader>;dl for "dev logs"
+    function()
+        local state = require("lnvim.state")
+        local log_dir = state.project_lnvim_dir .. "/debug_logs"
+        vim.cmd("split " .. log_dir .. "/dev_debug.log")
+    end,
+    { desc = "Open developer debug logs" }
+)
+
+M.make_plugKey(
+    "DevClearLogs",
+    "n",
+    "uc", -- <Leader>;dc for "dev clear"
+    function()
+        local state = require("lnvim.state")
+        local log_file = state.project_lnvim_dir .. "/debug_logs/dev_debug.log"
+        local file = io.open(log_file, "w")
+        if file then
+            file:close()
+            vim.notify("Developer debug logs cleared", vim.log.levels.INFO)
+        end
+    end,
+    { desc = "Clear developer debug logs" }
 )
 
 	-- M.make_plugKey("GenerateReadme", "n", "R", lcmd.generate_readme, { desc = "Generate README.md" })

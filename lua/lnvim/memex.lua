@@ -18,23 +18,34 @@ function M.new_note_modal()
                 -- Generate name using LLM
                 local temp_file = vim.fn.tempname()
                 vim.fn.writefile(content, temp_file)
+local model
+for _, m in ipairs(state.models) do
+    if m.model_id == state.wtf_model then
+        model = m
+        break
+    end
+end
+
+
                 LLM.focused_query({
+                   model = model,
                     system_prompt = "Generate a concise, descriptive filename for this note. Respond ONLY with the filename, no extension or markdown.",
                     files = {temp_file},
-                    on_complete = function(response)
+                    on_complete =  vim.schedule_wrap(function(response)
                         name = response:gsub("[^%w_%-]", ""):sub(1, 50)
                         vim.fn.delete(temp_file)
                         M.store(name, content, {
                             tags = {"auto-generated"},
                             links = {}
                         })
-                    end
+                    end)
                 })
             else
                 M.store(name, content, {
                     tags = {},
                     links = {}
                 })
+
             end
         end)
     end)
@@ -116,6 +127,8 @@ M.store = function(name, content, opts)
     
     -- Write to file
     vim.fn.writefile(lines, full_path)
+
+    vim.notify("note saved as `" .. name .. "`")
 end
 
 M.retrieve = function(name)
@@ -239,7 +252,7 @@ function M.search_notes()
                 value = file_path,  -- Full path for editing
                 display = string.format("%s (%s)", 
                     filename:gsub("%.md$", ""),  -- Remove .md extension
-                    os.date("%Y-%m-%d", stat.mtime.sec)  -- Format modification time
+                    os.date("%Y-%m-%d %H:%M:%S", stat.mtime.sec)  -- Format modification time
                 ),
                 ordinal = filename,  -- For sorting
                 stat = stat,  -- Store stat for sorting

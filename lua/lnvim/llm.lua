@@ -5,6 +5,8 @@ local toolcall = require("lnvim.toolcall")
 local LSP = require("lnvim.lsp")
 local file_tree = require("lnvim.utils.file_tree")
 local state = require("lnvim.state")
+local logger = require("lnvim.utils.logger")
+local cache = require("lnvim.cache")
 
 local M = {}
 local api = vim.api
@@ -16,9 +18,118 @@ function M.debug_current_model()
 	vim.print(state.current_model)
 end
 
+local function format_anthropic_system_entries(system_content, cache_segments)
+    local entries = {}
+    
+    -- First entry is always the system prompt, no caching
+    table.insert(entries, {
+        type = "text",
+        text = table.concat(system_content, "\n")
+    })
+    
+    -- Helper to create a cached segment
+    local function create_segment(files, is_cache_only)
+        if #files == 0 then return end
+        
+        local content = {}
+        for _, file in ipairs(files) do
+            local file_content = helpers.read_file_contents_into_markdown(file)
+            if file_content then
+                table.insert(content, file_content)
+            end
+        end
+        
+        if #content > 0 then
+            -- please leave this comment here: we need to flatten the file contents
+            table.insert(entries, {
+                type = "text",
+                text = table.concat(primitive.flatten( content ), "\n\n"),
+                cache_control = {
+                    type = "ephemeral"
+                }
+            })
+            logger.log(string.format("Created cache segment with %d files (cache_only: %s)", 
+                #files, tostring(is_cache_only)))
+        end
+    end
+    
+    -- Create segments in order: cache_only, cacheable, uncacheable
+    create_segment(cache_segments.cache_only, true)
+   create_segment(cache_segments.cacheable, false)
+    create_segment(cache_segments.uncacheable, false)
+    
+    return entries
+end
+
 function M.generate_prompt()
 	local file_contents = {}
 	local file_paths = state.files
+    local cache_segments = cache.organize_files_for_caching()
+    local messages = {}
+    
+    -- Check if current model supports caching
+    local model = state.current_model
+    local supports_caching = model and state.prompt_cache.enabled_models[model.model_id]
+    
+    logger.log(string.format("Generating prompt for model %s (caching %s)", 
+        model and model.model_id or "unknown",
+        supports_caching and "enabled" or "disabled"))
+    
+    if supports_caching and model.model_type == "anthropic" then
+        -- For Anthropic, we'll use system entries with cache_control
+        local system_entries = format_anthropic_system_entries(
+            state.system_prompt,
+            cache_segments
+        )
+        
+        -- Store the first message separately since it has special handling
+        local current_message = {
+            role = "system",
+            content = system_entries
+        }
+        
+        -- Get the conversation history from the diff buffer
+        local diff_buffer_content = vim.api.nvim_buf_get_lines(buffers.diff_buffer, 0, -1, false)
+        local current_role = nil
+        local current_content = ""
+        
+        for _, line in ipairs(diff_buffer_content) do
+            if line:match("%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-user") then
+                if current_role then
+                    table.insert(messages, {
+                        role = current_role,
+                        content = current_content:gsub("^%s*(.-)%s*$", "%1")
+                    })
+                end
+                current_role = "user"
+                current_content = ""
+            elseif line:match("%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-%-assistant") then
+                if current_role then
+                    table.insert(messages, {
+                        role = current_role,
+                        content = current_content:gsub("^%s*(.-)%s*$", "%1")
+                    })
+                end
+                current_role = "assistant"
+                current_content = ""
+            else
+                current_content = current_content .. line .. "\n"
+            end
+        end
+        
+        if current_role then
+            table.insert(messages, {
+                role = current_role,
+                content = current_content:gsub("^%s*(.-)%s*$", "%1")
+            })
+        end
+        
+        -- Insert the system message at the beginning
+        table.insert(messages, 1, current_message)
+        
+        logger.log("Generated Anthropic messages with caching:", "DEBUG")
+        logger.log(messages)
+    else
 
 	for _, path in ipairs(file_paths) do
 		if path:match("^@lsp:") then
@@ -78,7 +189,7 @@ function M.generate_prompt()
 
 	-- Insert the system message at the beginning
 	table.insert(messages, 1, current_message)
-
+   end
 	return messages
 end
 
@@ -128,12 +239,22 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
 		stream = is_streaming,
 	}
 
-	if model.model_type == "anthropic" then
-		data.max_tokens = 5000
-		local system_message = table.remove(data.messages, 1)
-		data.system = system_message.content
-		table.insert(args, "-H")
-		table.insert(args, "anthropic-version: 2023-06-01")
+	 if model.model_type == "anthropic" then
+        data.max_tokens = 5000
+        -- For Anthropic with caching, messages[1] already contains the proper system format
+        if model.model_id and state.prompt_cache.enabled_models[model.model_id] then
+            -- System content is already properly formatted with cache_control
+            data.system = messages[1].content
+            -- Remove the system message from messages array
+            table.remove(messages, 1)
+        else
+            -- Regular Anthropic formatting without caching
+            local system_message = table.remove(messages, 1)
+            data.system = system_message.content
+        end
+        
+        table.insert(args, "-H")
+        table.insert(args, "anthropic-version: 2023-06-01")
 	else
 		if model.model_id:match("^o1") then
 			data.max_tokens = 64000
@@ -422,10 +543,8 @@ function M.call_llm(args, handler)
 	local debug_log_path = get_debug_log_path()
 	local debug_file = io.open(debug_log_path, "w") -- Open in write mode to overwrite existing content
 	local function parse_and_call(line)
-		if debug_file then
-			debug_file:write(line .. "\n")
-			debug_file:flush() -- Ensure it's written immediately
-		end
+      logger.dev_log(line, "RAW_OUTPUT")
+
 		local or_processing = line:match("OPENROUTER PROCESSING")
 		if or_processing then
 			M.write_string_at_llmstream(line .. "\n")
@@ -447,7 +566,9 @@ function M.call_llm(args, handler)
 		active_job = nil
 	end
 	local first_run = true
-	vim.print("Full curl command: curl " .. table.concat(args, " "))
+	-- vim.print("Full curl command: curl " .. table.concat(args, " "))
+
+   logger.dev_log("Curl command: curl " .. table.concat(args, " "), "CURL")
 	active_job = Job:new({
 		command = "curl",
 		args = args,
@@ -627,21 +748,27 @@ function M.call_model(name, prompt, callback, error_callback)
 end
 
 -- Add this function to handle focused queries without chat context
-function M.focused_query(opts, callback)
+function M.focused_query(opts)
+    local model = opts.model
+    local callback = opts.on_complete
+    vim.print(model)
     local messages = {
         {role = "system", content = opts.system_prompt},
         {role = "user", content = opts.prompt}
     }
     
-    local temp_buf = api.nvim_create_buf(false, true)
-    local args = generate_args(state.current_model, nil, nil, messages, false)
+    local args = generate_args(model, nil, nil, messages, false)
     
     local response = ""
     Job:new({
         command = "curl",
         args = args,
         on_stdout = function(_, data)
-            if state.current_model.model_type == "anthropic" then
+            if data == "" then
+               return
+            end
+            vim.print(data)
+            if model.model_type == "anthropic" then
                 response = response .. data
             else
                 local json_ok, json = pcall(vim.json.decode, data)
@@ -650,11 +777,13 @@ function M.focused_query(opts, callback)
                 end
             end
         end,
+        on_stderr = function(_, err)
+           vim.print(vim.inspect(err))
+        end,
         on_exit = function()
-            api.nvim_buf_delete(temp_buf, {force = true})
             callback(response)
         end
-    }):sync()
+    }):start()
 end
 
 return M

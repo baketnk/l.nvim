@@ -10,12 +10,20 @@ local _state = {
 	paste_mark = nil,
 	autocomplete = {},
 	autocomplete_model = {},
-	wtf_model = "llama3.2:3b",
+	wtf_model = "llama3.2:1b",
 	default_prompt_path = nil,
 	project_root = nil,
 	project_lnvim_dir = nil,
 	keymap_prefix = nil,
 	mark = nil,
+prompt_cache = {
+    entries = {},  -- Cache entries
+    enabled_models = {  -- Models that support caching
+        ["claude-3-5-sonnet-latest"] = true,
+        ["claude-3-5-sonnet-20240620"] = true,
+        ["claude-3-5-haiku-latest"] = true
+    }
+}
 }
 -- List of keys that should trigger update_summary when changed
 local update_triggers = {
