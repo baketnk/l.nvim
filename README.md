@@ -1,4 +1,9 @@
-# l.nvim
+```
+    ╭──────────────╮
+    │  ⚜ l.nvim ⚜  │
+    │  ━━━━━━━━━   │
+    ╰──────────────╯
+```
 l.nvim is a Neovim plugin that integrates large language models (LLMs) into your editing workflow.
 
 ![image](https://repository-images.githubusercontent.com/847120613/b73bed30-4aa2-4fbf-9ffc-9c870915cb38)
