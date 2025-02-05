@@ -383,33 +383,36 @@ end
 function M.clear_buffers(which)
 	local buffers_to_clear = {}
 
-	if which == "all" or which == "d" then
-		table.insert(buffers_to_clear, buffers.diff_buffer)
-		M.save_diff_buffer_contents()
-	end
-	if which == "all" or which == "f" then
-		state.files = {}
-	end
+    if which == "all" or which == "d" then
+        table.insert(buffers_to_clear, buffers.diff_buffer)
+        M.save_diff_buffer_contents()
+    end
+    if which == "all" or which == "f" then
+        state.files = {}
+    end
+    if which == "all" or which == "c" then
+        state.cache_only_files = {}
+    end
 
-	for _, buf in ipairs(buffers_to_clear) do
-		vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
-	end
+    for _, buf in ipairs(buffers_to_clear) do
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
+    end
 
-	local message
-	if which == "all" then
-		message = "All buffers cleared"
-		require("lnvim.llm").print_user_delimiter()
-	elseif which == "d" then
-		message = "Diff buffer cleared"
-		require("lnvim.llm").print_user_delimiter()
-	elseif which == "f" then
-		message = "Files buffer cleared"
-	elseif which == "p" then
-		message = "Work buffer cleared"
-	else
-		message = "No buffers cleared"
-	end
-	vim.notify(message, vim.log.levels.INFO)
+    local message
+    if which == "all" then
+        message = "All buffers cleared"
+        require("lnvim.llm").print_user_delimiter()
+    elseif which == "d" then
+        message = "Diff buffer cleared"
+        require("lnvim.llm").print_user_delimiter()
+    elseif which == "f" then
+        message = "Files buffer cleared"
+    elseif which == "c" then
+        message = "Cache files cleared"
+    else
+        message = "No buffers cleared"
+    end
+    vim.notify(message, vim.log.levels.INFO)
 end
 
 function M.focus_main_window()

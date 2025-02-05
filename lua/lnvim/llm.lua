@@ -160,7 +160,7 @@ function M.generate_prompt()
 
 	local system_prompt_text_formatted = table.concat(state.system_prompt, "\n") .. "\n"
 
-	local messages = {}
+	messages = {}
 	local current_message = { role = "system", content = system_prompt_text_formatted .. file_contents_text }
 	local current_role = nil
 	local current_content = ""

@@ -62,35 +62,43 @@ local state_mt = {
 setmetatable(state_proxy, state_mt)
 
 function M.get_summary()
-	local file_count = 0
-	local lsp_count = 0
-	local has_file_list = ""
-	for _, file in ipairs(_state.files) do
-		if file:match("^@lsp:") then
-			lsp_count = lsp_count + 1
-		elseif file == "@project-file-list" then
-			has_file_list = "File List, "
-		else
-			file_count = file_count + 1
-		end
-	end
+    local file_count = 0
+    local lsp_count = 0
+    local cache_count = #_state.cache_only_files or 0
+    local has_file_list = ""
+    
+    for _, file in ipairs(_state.files) do
+        if file:match("^@lsp:") then
+            lsp_count = lsp_count + 1
+        elseif file == "@project-file-list" then
+            has_file_list = "File List, "
+        else
+            file_count = file_count + 1
+        end
+    end
 
-	local system_prompt_preview = ""
-	if _state.system_prompt then
-		system_prompt_preview = table.concat(_state.system_prompt, "\n")
-		system_prompt_preview = system_prompt_preview:sub(1, 50) .. (system_prompt_preview:len() > 50 and "..." or "")
-	end
-	local model_info = _state.current_model and _state.current_model.model_id or "No model selected"
+    local system_prompt_preview = ""
+    if _state.system_prompt then
+        if type(_state.system_prompt) == "table" then
+         system_prompt_preview = table.concat(_state.system_prompt, "\n") -- luals: ignore
+        end
+        system_prompt_preview = system_prompt_preview:sub(1, 50) .. (system_prompt_preview:len() > 50 and "..." or "")
+    end
+    local model_info = _state.current_model and _state.current_model.model_id or "No model selected"
 
-	return string.format(
-		"Include: %s%d files, %d LSPs\n" .. "System: %s\n" .. "Status: %s\n" .. "Model: %s",
-		has_file_list,
-		file_count,
-		lsp_count,
-		system_prompt_preview,
-		_state.status,
-		model_info
-	)
+    return string.format(
+        "Include: %s%d files, %d LSPs, %d cached\n" ..
+        "System: %s\n" ..
+        "Status: %s\n" ..
+        "Model: %s",
+        has_file_list,
+        file_count,
+        lsp_count,
+        cache_count,
+        system_prompt_preview,
+        _state.status,
+        model_info
+    )
 end
 
 -- Expose the proxy object instead of the raw state
