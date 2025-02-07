@@ -97,7 +97,7 @@ M.default_models = {
       model_id = "llama3.2:3b",
       model_type = "openaicompat",
       noauth = true,
-      api_url = "https://localhost:11434/v1/chat/completions",
+      api_url = "http://localhost:11434/v1/chat/completions",
       use_toolcalling = false,
    },
 }
@@ -275,6 +275,14 @@ function M.setup(_opts)
    M.make_plugKey("MemexInsertNote", "n", "in", require("lnvim.memex").insert_note, { desc = "Insert memex note" })
    M.make_plugKey("MemexGlobalSearch", "n", "sn", require("lnvim.memex").global_search, { desc = "Search memex content" })
 
+   M.make_plugKey(
+    "ExaSearch",
+    "n",
+    "E",  -- This will make it <Leader>;E
+    require("lnvim.exa").search,
+    { desc = "Search with Exa API" }
+)
+
    M.make_plugKey("ToggleToolUsage", "n", "t", require("lnvim.toolcall").tools_toggle, { desc = "Toggle tool usage" })
    M.make_plugKey(
       "ShellToPrompt",
@@ -284,14 +292,6 @@ function M.setup(_opts)
       { desc = "Run shell command and add output to prompt" }
    )
 
-   -- cfg.lua (add to the setup function)
-   M.make_plugKey(
-      "StreamSelected",
-      "x",
-      "w",
-      lcmd.stream_selected_text,
-      { desc = "Stream selected text through qask" }
-   )
    M.make_plugKey(
       "DumpSymbols",
       "n",
