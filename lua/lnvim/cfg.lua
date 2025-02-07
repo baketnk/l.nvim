@@ -100,6 +100,13 @@ M.default_models = {
       api_url = "http://localhost:11434/v1/chat/completions",
       use_toolcalling = false,
    },
+   {
+      model_id = "gemini-2.0-flash",
+      model_type = "google",
+      api_key = "GOOGLE_API_KEY",
+      api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent",
+      use_toolcalling = false,
+   },
 }
 
 function M.setup(_opts)

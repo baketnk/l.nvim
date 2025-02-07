@@ -34,17 +34,17 @@ local ROLES = {
 }
 
 local function create_delimiter(role, label)
-    if not ROLES[role] then
-        vim.notify("Unknown role: " .. role, vim.log.levels.WARN)
-        return nil
-    end
-    
-    local prefix = ROLES[role].delimiter_prefix
-    if label then
-        prefix = prefix .. "-" .. label
-    end
-    
-    return string.rep("-", 40) .. prefix .. os.date(" %Y-%m-%d %H:%M:%S ") .. string.rep("-", 40)
+   if not ROLES[role] then
+      vim.notify("Unknown role: " .. role, vim.log.levels.WARN)
+      return nil
+   end
+
+   local prefix = ROLES[role].delimiter_prefix
+   if label then
+      prefix = prefix .. "-" .. label
+   end
+
+   return string.rep("-", 40) .. prefix .. os.date(" %Y-%m-%d %H:%M:%S ") .. string.rep("-", 40)
 end
 
 local function format_anthropic_system_entries(system_content, cache_segments)
@@ -239,10 +239,13 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
    }
 
    if model.api_key then
-      table.insert(args, "-H")
       if model.model_type == "anthropic" then
+         table.insert(args, "-H")
          table.insert(args, "x-api-key: " .. os.getenv(model.api_key))
+      elseif model.model_type == "google" then
+         -- No API key header needed for Google; it is included as a query parameter
       else
+         table.insert(args, "-H")
          table.insert(args, "Authorization: Bearer " .. os.getenv(model.api_key))
       end
    end
@@ -261,14 +264,32 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
    if type(system_prompt) == "table" then
       system_prompt = table.concat(system_prompt, "\n")
    end
-   local data = {
-      model = model.model_id,
-      messages = messages or {
-         { role = "system", content = system_prompt },
-         { role = "user",   content = prompt },
-      },
-      stream = is_streaming,
-   }
+
+   local data = {}
+   if model.model_type == "google" then
+      local contents = {}
+      for _, msg in ipairs(messages) do
+         local role = msg.role
+         local text = msg.content
+
+         if role == "system" then
+            table.insert(contents, { role = "user", parts = { { text = text } } }) --  Treat as user
+         else
+            table.insert(contents, { role = role, parts = { { text = text } } })
+         end
+      end
+      data = { contents = contents }
+   else
+      data = {
+         model = model.model_id,
+         messages = messages or {
+            { role = "system", content = system_prompt },
+            { role = "user",   content = prompt },
+         },
+         stream = is_streaming,
+      }
+   end
+
 
    if model.model_type == "anthropic" then
       data.max_tokens = 5000
@@ -289,7 +310,7 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
    else
       if model.model_id:match("^o1") then
          data.max_tokens = 64000
-      else
+      elseif model.model_type ~= "google" then
          data.max_tokens = M.max_tokens or 4096
       end
    end
@@ -307,7 +328,13 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
 
    table.insert(args, "-d")
    table.insert(args, vim.json.encode(data))
-   table.insert(args, model.api_url)
+   if model.model_type == "google" then
+      local api_key = os.getenv(model.api_key)
+      table.insert(args, model.api_url .. "?alt=sse&key=" .. api_key) -- google api key here
+   else
+      table.insert(args, model.api_url)
+   end
+
    return args
 end
 
@@ -329,10 +356,10 @@ function M.write_string_at_cursor(str)
 end
 
 function M.insert_assistant_delimiter(label)
-    local delimiter = create_delimiter("assistant", label)
-    vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "", delimiter, "" })
-    local line_count = vim.api.nvim_buf_line_count(buffers.diff_buffer)
-    stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, line_count - 1, 0, {})
+   local delimiter = create_delimiter("assistant", label)
+   vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "", delimiter, "" })
+   local line_count = vim.api.nvim_buf_line_count(buffers.diff_buffer)
+   stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, line_count - 1, 0, {})
 end
 
 function M.append_diff(diff_buffer, diff_text, label)
@@ -369,16 +396,16 @@ function M.write_string_at_llmstream(str)
 end
 
 function M.insert_agent_delimiter(label)
-    local delimiter = create_delimiter("agent", label)
-    vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "", delimiter, "" })
-    local line_count = vim.api.nvim_buf_line_count(buffers.diff_buffer)
-    -- You might want to create a different namespace for agent extmarks
-    stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, line_count - 1, 0, {})
+   local delimiter = create_delimiter("agent", label)
+   vim.api.nvim_buf_set_lines(buffers.diff_buffer, -1, -1, false, { "", delimiter, "" })
+   local line_count = vim.api.nvim_buf_line_count(buffers.diff_buffer)
+   -- You might want to create a different namespace for agent extmarks
+   stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, line_count - 1, 0, {})
 end
 
 function M.print_user_delimiter()
    vim.schedule(function()
-        local delimiter = create_delimiter("user")
+      local delimiter = create_delimiter("user")
 
       local row, col
 
@@ -491,6 +518,32 @@ function M.handle_openai_data(data_stream, event_state)
    end
 end
 
+function M.handle_googleai_data(data_stream, event_state)
+   -- vim.print(vim.inspect(data_stream))
+   if data_stream:match('"text":') then
+      local json_ok, json = pcall(function()
+         return vim.json.decode(data_stream)
+      end)
+      if json_ok and json.candidates and json.candidates[1] and json.candidates[1].content then
+         -- handle multiple parts
+         local parts = json.candidates[1].content.parts
+         for _, part in ipairs(parts) do
+            if part.text then
+               M.write_string_at_llmstream(part.text)
+            end
+         end
+      end
+      --elseif data_stream:match("%[DONE%]") then
+   elseif data_stream:match("data: %{") then
+      -- ignore first data line
+      return
+   elseif data_stream:match("event: stream-end") then
+      -- Handle Google stream end
+      state.status = "Idle"
+      M.print_user_delimiter()
+   end
+end
+
 function M.process_tool_queue()
    if #tool_queue > 0 then
       local tool = table.remove(tool_queue, 1)
@@ -558,7 +611,17 @@ function M.chat_with_buffer()
    local messages = M.generate_prompt()
    stream_insert_extmark = vim.api.nvim_buf_set_extmark(buffers.diff_buffer, stream_insert_ns, 0, 0, {})
    -- vim.print(vim.inspect(state.current_model))
-   local handler = state.current_model.model_type == "anthropic" and M.handle_anthropic_data or M.handle_openai_data
+   local handler
+   if state.current_model.model_type == "anthropic" then
+      handler = M.handle_anthropic_data
+   elseif state.current_model.model_type == "openai" then
+      handler = M.handle_openai_data
+   elseif state.current_model.model_type == "google" then
+      handler = M.handle_googleai_data
+   else
+      handler = M.handle_openai_data -- Default handler
+   end
+
    local args = generate_args(state.current_model, nil, nil, messages)
 
    return M.call_llm(args, handler)
@@ -701,6 +764,8 @@ function M.call_model(name, prompt, callback, error_callback)
       local auth_header = ""
       if model.model_type == "anthropic" then
          auth_header = "x-api-key: " .. vim.env[model.api_key]
+      elseif model.model_type == "google" then
+         -- No API key header needed for Google; it is included as a query parameter
       else
          auth_header = "Authorization: Bearer " .. vim.env[model.api_key]
       end
@@ -729,6 +794,12 @@ function M.call_model(name, prompt, callback, error_callback)
       }
       table.insert(args, "-H")
       table.insert(args, "anthropic-version: 2023-06-01")
+   elseif model.model_type == "google" then
+      local contents = {
+         { role = "system", parts = { { text = "You are an assistant." } } }, --Treat as user
+         { role = "user",   parts = { { text = prompt } } },
+      }
+      payload = { contents = contents }
    else
       payload = {
          model = model.model_id,
@@ -758,7 +829,13 @@ function M.call_model(name, prompt, callback, error_callback)
 
    table.insert(args, "-d")
    table.insert(args, vim.fn.json_encode(payload))
-   table.insert(args, model.api_url)
+   if model.model_type == "google" then
+      local api_key = os.getenv(model.api_key)
+      table.remove(args, table.maxn(args)) -- Remove the original URL
+      table.insert(args, model.api_url .. "?key=" .. api_key)
+   else
+      table.insert(args, model.api_url)
+   end
 
    -- Execute the curl command
    Job:new({
@@ -805,6 +882,17 @@ function M.focused_query(opts)
             local json_ok, json = pcall(vim.json.decode, data)
             if json_ok and json.content then
                response = response .. (json.content[1].text or "")
+            end
+         elseif model.model_type == "google" then
+            local json_ok, json = pcall(vim.json.decode, data)
+            if json_ok and json.candidates and json.candidates[1] and json.candidates[1].content then
+               -- handle multiple parts
+               local parts = json.candidates[1].content.parts
+               for _, part in ipairs(parts) do
+                  if part.text then
+                     response = response .. part.text
+                  end
+               end
             end
          else
             local json_ok, json = pcall(vim.json.decode, data)
