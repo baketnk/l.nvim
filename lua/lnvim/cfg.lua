@@ -104,7 +104,14 @@ M.default_models = {
       model_id = "gemini-2.0-flash",
       model_type = "google",
       api_key = "GOOGLE_API_KEY",
-      api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent",
+      api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent",
+      use_toolcalling = false,
+   },
+   {
+      model_id = "gemini-2.0-pro-exp-02-05",
+      model_type = "google",
+      api_key = "GOOGLE_API_KEY",
+      api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-pro-exp-02-05:streamGenerateContent",
       use_toolcalling = false,
    },
 }
@@ -254,6 +261,25 @@ function M.setup(_opts)
       { desc = "copy selection to end of prompt in codeblock" }
    )
 
+
+   M.make_plugKey(
+
+      "ToggleCaching",
+
+      "n",
+
+      "C",   -- <Leader>;C
+
+      function()
+         state.prompt_cache.enabled = not state.prompt_cache.enabled
+
+         local status_msg = "Prompt caching " .. (state.prompt_cache.enabled and "enabled" or "disabled")
+
+         vim.notify(status_msg, vim.log.levels.INFO)
+      end,
+
+      { desc = "Toggle prompt caching" })
+
    M.make_plugKey(
       "CacheOnlyFiles",
       "n",
@@ -283,12 +309,12 @@ function M.setup(_opts)
    M.make_plugKey("MemexGlobalSearch", "n", "sn", require("lnvim.memex").global_search, { desc = "Search memex content" })
 
    M.make_plugKey(
-    "ExaSearch",
-    "n",
-    "E",  -- This will make it <Leader>;E
-    require("lnvim.exa").search,
-    { desc = "Search with Exa API" }
-)
+      "ExaSearch",
+      "n",
+      "E", -- This will make it <Leader>;E
+      require("lnvim.exa").search,
+      { desc = "Search with Exa API" }
+   )
 
    M.make_plugKey("ToggleToolUsage", "n", "t", require("lnvim.toolcall").tools_toggle, { desc = "Toggle tool usage" })
    M.make_plugKey(

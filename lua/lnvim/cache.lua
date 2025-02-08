@@ -3,6 +3,9 @@ local M = {}
 local state = require("lnvim.state")
 local logger = require("lnvim.utils.logger")
 
+local telescope = require("telescope.builtin")
+local actions = require("telescope.actions")
+local action_state = require("telescope.actions.state")
 -- Cache-only files are stored separately from regular files
 -- They will always be included in cached segments when possible
 state.cache_only_files = state.cache_only_files or {}
@@ -11,11 +14,42 @@ function M.select_cache_only_files()
     local helpers = require("lnvim.utils.helpers")
     
     local function on_select(selected_files)
-        state.cache_only_files = selected_files
-        logger.log("Updated cache-only files: " .. vim.inspect(selected_files))
+        
     end
-    
-    return helpers.select_files_for_prompt(false, false, on_select)
+local existing_paths = state.files
+	local selected_paths = {}
+
+	local opts = {
+		prompt_title = "Select files for caching",
+		attach_mappings = function(prompt_bufnr, map)
+			actions.select_default:replace(function()
+				local current_picker = action_state.get_current_picker(prompt_bufnr)
+				local multi_selections = current_picker:get_multi_selection()
+				if #multi_selections > 0 then
+					for _, select in ipairs(multi_selections) do
+						table.insert(selected_paths, select.path)
+					end
+				else
+					local selection = action_state.get_selected_entry()
+					if selection then
+						table.insert(selected_paths, selection.path)
+					end
+				end
+
+				actions.close(prompt_bufnr)
+            state.cache_only_files = selected_paths 
+			end)
+			return true
+		end,
+		multi = true,
+		hidden = hidden,
+		no_ignore = no_ignore,
+	}
+	if hidden then
+		opts.find_command = { "rg", "--files", "--hidden", "-g", "!.git" }
+	end
+
+	telescope.find_files(opts)
 end
 
 -- Helper function to check if a file should be considered for caching

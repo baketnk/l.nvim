@@ -98,7 +98,7 @@ function M.generate_prompt()
 
    -- Check if current model supports caching
    local model = state.current_model
-   local supports_caching = model and state.prompt_cache.enabled_models[model.model_id]
+   local supports_caching = model and state.prompt_cache.enabled and state.prompt_cache.enabled_models[model.model_id]
 
    logger.log(string.format("Generating prompt for model %s (caching %s)",
       model and model.model_id or "unknown",
