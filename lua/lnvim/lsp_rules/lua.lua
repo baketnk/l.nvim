@@ -2,7 +2,6 @@
 
 local M = {}
 
--- Parse identifiers from Lua code
 function M.parse_identifiers(contents)
    local parser = vim.treesitter.get_string_parser(contents, "lua")
    local tree = parser:parse()[1]
@@ -12,6 +11,7 @@ function M.parse_identifiers(contents)
 
    local function visit_node(node, path, context)
       local node_type = node:type()
+
       if node_type == "function_declaration" or
           node_type == "local_function_declaration" or
           node_type == "assignment" or
@@ -28,6 +28,19 @@ function M.parse_identifiers(contents)
                   kind = "Function",
                   node = node,
                   text = node_text,
+                  path = full_path
+               })
+            elseif name_node and name_node:type() == "dot_index_expression" then
+               -- Handle  `function M.func_name()`
+               local table_name = vim.treesitter.get_node_text(name_node:child(0), contents)
+               local field_name = vim.treesitter.get_node_text(name_node:child(2), contents)
+               local full_path = table_name .. "." .. field_name
+
+               table.insert(symbols, {
+                  name = field_name,
+                  kind = "Function",
+                  node = node,
+                  text = vim.treesitter.get_node_text(node, contents),
                   path = full_path
                })
             end
@@ -112,13 +125,13 @@ function M.find_symbols(uri, identifiers, callback)
       textDocument = { uri = uri },
    }
    local kind_map = {
-      Function = 12,   -- Function
-      Variable = 13,   -- Variable
+      Function = 12, -- Function
+      Variable = 13, -- Variable
    }
    local bufnr = vim.uri_to_bufnr(uri)
 
-   vim.print("LSP Request URI:", uri)                           -- Debug log
-   vim.print("Looking for symbols:", vim.inspect(identifiers))  -- Debug log
+   vim.print("LSP Request URI:", uri)                          -- Debug log
+   vim.print("Looking for symbols:", vim.inspect(identifiers)) -- Debug log
 
    local symbols = vim.lsp.buf_request_sync(bufnr,
       'textDocument/documentSymbol',

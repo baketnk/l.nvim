@@ -519,7 +519,6 @@ function M.handle_openai_data(data_stream, event_state)
 end
 
 function M.handle_googleai_data(data_stream, event_state)
-   -- vim.print(vim.inspect(data_stream))
    if data_stream:match('"text":') then
       local json_ok, json = pcall(function()
          return vim.json.decode(data_stream)
@@ -532,15 +531,16 @@ function M.handle_googleai_data(data_stream, event_state)
                M.write_string_at_llmstream(part.text)
             end
          end
+         
+         -- Check for finish reason
+         if json.candidates[1].finishReason == "STOP" then
+            state.status = "Idle"
+            M.print_user_delimiter()
+         end
       end
-      --elseif data_stream:match("%[DONE%]") then
    elseif data_stream:match("data: %{") then
       -- ignore first data line
       return
-   elseif data_stream:match("event: stream-end") then
-      -- Handle Google stream end
-      state.status = "Idle"
-      M.print_user_delimiter()
    end
 end
 
