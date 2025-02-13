@@ -407,7 +407,6 @@ M.make_plugKey(
       M.show_drawer()
    end
 
-   require("lnvim.chains.chains")
    vim.api.nvim_create_user_command("TestModal", function()
       require("lnvim.ui.modal").modal_input({ prompt = "Test Modal:" }, function(input)
          print("You entered: " .. input)
