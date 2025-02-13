@@ -114,6 +114,14 @@ M.default_models = {
       api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-pro-exp-02-05:streamGenerateContent",
       use_toolcalling = false,
    },
+{
+      model_id = "huggingface.co/NousResearch/DeepHermes-3-Llama-3-8B-Preview-GGUF:latest", -- TODO: use real ollama name
+      model_type = "openaicompat",
+      noauth = true,
+      api_url = "http://localhost:11434/v1/chat/completions",
+      use_toolcalling = false,
+      reasoning_prompt_override = "You are a deep thinking AI, you may use extremely long chains of thought to deeply consider the problem and deliberate with yourself via systematic reasoning processes to help come to a correct solution prior to answering. You should enclose your thoughts and internal monologue inside <think> </think> tags, and then provide your solution or response to the problem.",
+   },
 }
 
 function M.setup(_opts)
@@ -146,7 +154,9 @@ function M.setup(_opts)
           api_url = "https://api.deepseek.com/v1/chat/completions",
           use_toolcalling = false,
        }
-   local autocomplete = require("lnvim.autocomplete")
+   -- local autocomplete = require("lnvim.autocomplete")
+
+
    state.wtf_model = opts.wtf_model or "llama3.2:3b"
    local model_exists = vim.tbl_contains(
       vim.tbl_map(function(m) return m.model_id end, state.models),
@@ -205,6 +215,12 @@ function M.setup(_opts)
    state.keymap_prefix = opts.keymap_prefix or "<Leader>;"
    state.mark = "T"
 
+   vim.filetype.add({
+      extension = {
+         [constants.filetype_ext] = "markdown"
+      }
+   })
+
    vim.g.markdown_fenced_languages = {
       "html",
       "css",
@@ -244,10 +260,9 @@ function M.setup(_opts)
 
    M.make_plugKey("SelectModel", "n", "m", lcmd.select_model, { desc = "Select LLM model" })
 
-   M.make_plugKey("Autocomplete", "i", "<C-;>", autocomplete.call_autocomplete, { desc = "autocomplete" })
-   M.make_plugKey("AutocompleteLine", "i", "<C-'>", autocomplete.insert_next_line, { desc = "AC insert line" })
-   M.make_plugKey("AutocompleteAll", "i", "<C-p>", autocomplete.insert_whole_suggestion,
-      { desc = "AC insert suggestion" })
+   -- M.make_plugKey("Autocomplete", "i", "<C-;>", autocomplete.call_autocomplete, { desc = "autocomplete" })
+   -- M.make_plugKey("AutocompleteLine", "i", "<C-'>", autocomplete.insert_next_line, { desc = "AC insert line" })
+   -- M.make_plugKey("AutocompleteAll", "i", "<C-p>", autocomplete.insert_whole_suggestion, { desc = "AC insert suggestion" })
 
    M.make_plugKey("ReplaceFile", "n", "r", lcmd.replace_file_with_codeblock, { desc = "Replace file with code" })
    M.make_plugKey("SmartReplaceCodeblock", "n", "R", lcmd.smart_replace_with_codeblock,
@@ -268,7 +283,7 @@ function M.setup(_opts)
 
       "n",
 
-      "C",   -- <Leader>;C
+      "C", -- <Leader>;C
 
       function()
          state.prompt_cache.enabled = not state.prompt_cache.enabled
@@ -369,6 +384,23 @@ function M.setup(_opts)
       end,
       { desc = "Clear developer debug logs" }
    )
+M.make_plugKey(
+   "ToggleReasoning",
+   "n",
+   "ur", -- <Leader>;r
+   function()
+      state.use_reasoning = not state.use_reasoning
+      local status = state.use_reasoning and "enabled" or "disabled"
+      local model = state.current_model
+      local has_override = model and model.reasoning_prompt_override and true or false
+      local message = string.format("Reasoning mode %s%s", 
+         status,
+         state.use_reasoning and has_override and 
+            " (using custom prompt for " .. model.model_id .. ")" or "")
+      vim.notify(message, vim.log.levels.INFO)
+   end,
+   { desc = "Toggle reasoning mode" }
+)
 
    -- M.make_plugKey("GenerateReadme", "n", "R", lcmd.generate_readme, { desc = "Generate README.md" })
    if opts.open_drawer_on_setup then

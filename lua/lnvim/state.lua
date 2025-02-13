@@ -15,6 +15,7 @@ local _state = {
    project_root = nil,
    project_lnvim_dir = nil,
    keymap_prefix = nil,
+   use_reasoning = false,
 
    mark = nil,
    prompt_cache = {

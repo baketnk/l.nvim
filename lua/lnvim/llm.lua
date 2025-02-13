@@ -47,13 +47,24 @@ local function create_delimiter(role, label)
    return string.rep("-", 40) .. prefix .. os.date(" %Y-%m-%d %H:%M:%S ") .. string.rep("-", 40)
 end
 
+local function get_effective_system_prompt()
+   if state.use_reasoning and
+       state.current_model and
+       state.current_model.reasoning_prompt_override then
+      return { state.current_model.reasoning_prompt_override }
+   end
+   return state.system_prompt
+end
+
 local function format_anthropic_system_entries(system_content, cache_segments)
    local entries = {}
+
+   local effective_system_prompt = get_effective_system_prompt()
 
    -- First entry is always the system prompt, no caching
    table.insert(entries, {
       type = "text",
-      text = table.concat(system_content, "\n")
+      text = table.concat(effective_system_prompt, "\n")
    })
 
    -- Helper to create a cached segment
@@ -107,7 +118,7 @@ function M.generate_prompt()
    if supports_caching and model.model_type == "anthropic" then
       -- For Anthropic, we'll use system entries with cache_control
       local system_entries = format_anthropic_system_entries(
-         state.system_prompt,
+         get_effective_system_prompt(),
          cache_segments
       )
 
@@ -183,7 +194,7 @@ function M.generate_prompt()
          file_contents_text = table.concat(primitive.flatten(file_contents), "\n\n") .. "\n\n"
       end
 
-      local system_prompt_text_formatted = table.concat(state.system_prompt, "\n") .. "\n"
+      local system_prompt_text_formatted = table.concat(get_effective_system_prompt(), "\n") .. "\n"
 
       messages = {}
       local current_message = { role = "system", content = system_prompt_text_formatted .. file_contents_text }
@@ -531,7 +542,7 @@ function M.handle_googleai_data(data_stream, event_state)
                M.write_string_at_llmstream(part.text)
             end
          end
-         
+
          -- Check for finish reason
          if json.candidates[1].finishReason == "STOP" then
             state.status = "Idle"
