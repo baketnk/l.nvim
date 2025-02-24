@@ -50,8 +50,15 @@ local function validate_model(model)
 end
 
 M.default_models = {
+    {
+      model_id = "claude-3-7-sonnet-latest",
+      model_type = "anthropic",
+      api_url = "https://api.anthropic.com/v1/messages",
+      api_key = "ANTHROPIC_API_KEY",
+      use_toolcalling = false,
+   },
    {
-      model_id = "claude-3-5-sonnet-latest",
+      model_id = "claude-3-5-sonnet-20241022",
       model_type = "anthropic",
       api_url = "https://api.anthropic.com/v1/messages",
       api_key = "ANTHROPIC_API_KEY",
