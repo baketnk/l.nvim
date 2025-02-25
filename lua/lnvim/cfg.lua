@@ -364,6 +364,14 @@ function M.setup(_opts)
       { desc = "Toggle developer debug logging" }
    )
 
+M.make_plugKey(
+   "ToggleDiffPreview",
+   "n",
+   "ut", -- <Leader>;ut for "toggle diff preview"
+   require("lnvim.lsp_replace_rules").toggle_diff_preview,
+   { desc = "Toggle diff preview for replacements" }
+)
+
    M.make_plugKey(
       "DevOpenLogs",
       "n",

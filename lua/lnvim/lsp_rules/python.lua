@@ -1,4 +1,5 @@
 local M = {}
+local lsp_helpers = require("lnvim.utils.lsp")
 
 M.parse_identifiers = function(contents)
     local parser = vim.treesitter.get_string_parser(contents, "python")
@@ -167,79 +168,7 @@ M.find_symbols = function(uri, identifiers, callback)
     if #matches == 0 then
         callback(nil)
     else
-        -- Use telescope for selection
-        local pickers = require "telescope.pickers"
-        local finders = require "telescope.finders"
-        local conf = require("telescope.config").values
-        local actions = require "telescope.actions"
-        local action_state = require "telescope.actions.state"
-
-        pickers.new({}, {
-            prompt_title = "Select Symbols to Replace",
-            finder = finders.new_table {
-                results = matches,
-                entry_maker = function(entry)
-                    -- Process source symbol
-                    local source_symbol = entry.identifier
-                    local source_path = source_symbol.path or source_symbol.name
-
-                    -- Truncate source symbol text if necessary
-                    local source_symbol_text = source_symbol.text or "Unknown source"
-                    if #source_symbol_text > 50 then
-                        source_symbol_text = source_symbol_text:sub(1, 50) .. "..."
-                    end
-
-                    -- Process destination symbol
-                    local dest_symbol = entry.symbol
-                    local dest_range = dest_symbol.range
-                    local dest_range_str = string.format(
-                        "(%d,%d)-(%d,%d)",
-                        dest_range.start.line + 1,
-                        dest_range.start.character + 1,
-                        dest_range['end'].line + 1,
-                        dest_range['end'].character + 1
-                    )
-                    local dest_kind_num = dest_symbol.kind
-                    local dest_kind_name = vim.lsp.protocol.SymbolKind[dest_kind_num] or "Unknown"
-
-                    -- Construct the display string
-                    local display = string.format(
-                        "%s(...) -> %s [dest: %s, %s]",
-                        source_path,
-                        entry.path,
-                        dest_range_str,
-                        dest_kind_name
-                    )
-
-                    return {
-                        value = entry,
-                        display = display,
-                        ordinal = entry.path,
-                    }
-                end
-            },
-            sorter = conf.generic_sorter({}),
-            attach_mappings = function(prompt_bufnr, map)
-                actions.select_default:replace(function()
-                    local current_picker = action_state.get_current_picker(prompt_bufnr)
-                    local multi_selections = current_picker:get_multi_selection()
-                    if #multi_selections > 0 then
-                        callback(multi_selections)
-                    else
-                        local selection = action_state.get_selected_entry()
-                        if selection then
-                            callback({selection})
-                        else
-                            callback(nil)
-                        end
-                    end
-
-                    actions.close(prompt_bufnr)
-                end)
-                return true
-            end,
-            multi_select = true,
-        }):find()
+       lsp_helpers.show_symbol_picker(matches, callback) 
     end
 end
 

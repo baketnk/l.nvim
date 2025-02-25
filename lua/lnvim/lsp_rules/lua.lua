@@ -1,7 +1,6 @@
--- lsp_rules/lua.lua
-
 local M = {}
 
+local lsp_helpers = require("lnvim.utils.lsp")
 function M.parse_identifiers(contents)
    local parser = vim.treesitter.get_string_parser(contents, "lua")
    local tree = parser:parse()[1]
@@ -130,8 +129,7 @@ function M.find_symbols(uri, identifiers, callback)
    }
    local bufnr = vim.uri_to_bufnr(uri)
 
-   vim.print("LSP Request URI:", uri)                          -- Debug log
-   vim.print("Looking for symbols:", vim.inspect(identifiers)) -- Debug log
+   -- Removed print statements for uri and identifiers
 
    local symbols = vim.lsp.buf_request_sync(bufnr,
       'textDocument/documentSymbol',
@@ -139,110 +137,66 @@ function M.find_symbols(uri, identifiers, callback)
       1000
    )
 
+   -- Improved error handling for LSP response
+   if not symbols or #symbols == 0 then
+      vim.notify("No response from LSP server for document symbols", vim.log.levels.ERROR)
+      return callback(nil)
+   end
+
+   -- Debug output for the LSP response
+   vim.print("LSP Symbol Response:", vim.inspect(symbols))
+
    local matches = {}
 
    local function search_symbols(symbol_list, parent_path)
       for _, symbol in ipairs(symbol_list or {}) do
          local current_path = parent_path and (parent_path .. "." .. symbol.name) or symbol.name
+         -- Handle module prefix in symbol.name (e.g., "M.some_function" -> "some_function")
+         local symbol_name = symbol.name:match("[^.]+$") or symbol.name -- Get last part after dot
 
          for _, identifier in ipairs(identifiers) do
-            if symbol.kind == kind_map[identifier.kind] and
-                symbol.name == identifier.name then
-               table.insert(matches, {
-                  symbol = symbol,
-                  path = current_path,
-                  identifier = identifier
-               })
+            if identifier.is_module_function then
+               -- Module function: match name and ensure path starts with "M."
+               if symbol_name == identifier.name and current_path:match("^M%.") then
+                  table.insert(matches, {
+                     symbol = symbol,
+                     path = current_path,
+                     identifier = identifier
+                  })
+               end
+            else
+               -- Regular matching: try both name and path
+               if symbol_name == identifier.name or current_path == identifier.path then
+                  if symbol.kind == kind_map[identifier.kind] then
+                     table.insert(matches, {
+                        symbol = symbol,
+                        path = current_path,
+                        identifier = identifier
+                     })
+                  end
+               end
             end
          end
 
-         -- Recursively search children
          if symbol.children then
             search_symbols(symbol.children, current_path)
          end
       end
    end
-
    for _, result in ipairs(symbols or {}) do
-      search_symbols(result.result)
+      if result.result then
+         search_symbols(result.result)
+      else
+         vim.print("Invalid result structure:", vim.inspect(result))
+      end
    end
 
    if #matches == 0 then
+      -- More detailed error message
+      vim.notify("Could not find matching symbols. Check the console for debug info.", vim.log.levels.ERROR)
       callback(nil)
    else
-      -- Use telescope for selection
-      local pickers = require "telescope.pickers"
-      local finders = require "telescope.finders"
-      local conf = require("telescope.config").values
-      local actions = require "telescope.actions"
-      local action_state = require "telescope.actions.state"
-
-      pickers.new({}, {
-         prompt_title = "Select Symbols to Replace",
-         finder = finders.new_table {
-            results = matches,
-            entry_maker = function(entry)
-               -- Process source symbol
-               local source_symbol = entry.identifier
-               local source_path = source_symbol.path or source_symbol.name
-
-               -- Truncate source symbol text if necessary
-               local source_symbol_text = source_symbol.text or "Unknown source"
-               if #source_symbol_text > 50 then
-                  source_symbol_text = source_symbol_text:sub(1, 50) .. "..."
-               end
-
-               -- Process destination symbol
-               local dest_symbol = entry.symbol
-               local dest_range = dest_symbol.range
-               local dest_range_str = string.format(
-                  "(%d,%d)-(%d,%d)",
-                  dest_range.start.line + 1,
-                  dest_range.start.character + 1,
-                  dest_range['end'].line + 1,
-                  dest_range['end'].character + 1
-               )
-               local dest_kind_num = dest_symbol.kind
-               local dest_kind_name = vim.lsp.protocol.SymbolKind[dest_kind_num] or "Unknown"
-
-               -- Construct the display string
-               local display = string.format(
-                  "%s(...) -> %s [dest: %s, %s]",
-                  source_path,
-                  entry.path,
-                  dest_range_str,
-                  dest_kind_name
-               )
-
-               return {
-                  value = entry,
-                  display = display,
-                  ordinal = entry.path,
-               }
-            end
-         },
-         sorter = conf.generic_sorter({}),
-         attach_mappings = function(prompt_bufnr, map)
-            actions.select_default:replace(function()
-               local current_picker = action_state.get_current_picker(prompt_bufnr)
-               local multi_selections = current_picker:get_multi_selection()
-               if #multi_selections > 0 then
-                  callback(multi_selections)
-               else
-                  local selection = action_state.get_selected_entry()
-                  if selection then
-                     callback({ selection })
-                  else
-                     callback(nil)
-                  end
-               end
-
-               actions.close(prompt_bufnr)
-            end)
-            return true
-         end,
-         multi_select = true,
-      }):find()
+      lsp_helpers.show_symbol_picker(matches, callback)
    end
 end
 

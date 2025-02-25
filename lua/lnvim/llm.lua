@@ -18,6 +18,29 @@ function M.debug_current_model()
    vim.print(state.current_model)
 end
 
+local function create_temp_data_file(data)
+  local home = os.getenv("HOME")
+  local lnvim_dir = home .. "/.lnvim"
+  
+  -- Ensure the .lnvim directory exists
+  os.execute("mkdir -p " .. lnvim_dir)
+  
+  -- Create a unique filename using timestamp and random number
+  local filename = string.format("%s/curl_data_%d_%d.json", lnvim_dir, os.time(), math.random(100000))
+  
+  -- Write the JSON data to the file
+  local file = io.open(filename, "w")
+  if not file then
+    error("Failed to create temporary data file: " .. filename)
+    return nil
+  end
+  
+  file:write(vim.json.encode(data))
+  file:close()
+  
+  return filename
+end
+
 local ROLES = {
    user = {
       included_in_context = true, -- Include in normal LLM context
