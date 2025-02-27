@@ -19,26 +19,26 @@ function M.debug_current_model()
 end
 
 local function create_temp_data_file(data)
-  local home = os.getenv("HOME")
-  local lnvim_dir = home .. "/.lnvim"
-  
-  -- Ensure the .lnvim directory exists
-  os.execute("mkdir -p " .. lnvim_dir)
-  
-  -- Create a unique filename using timestamp and random number
-  local filename = string.format("%s/curl_data_%d_%d.json", lnvim_dir, os.time(), math.random(100000))
-  
-  -- Write the JSON data to the file
-  local file = io.open(filename, "w")
-  if not file then
-    error("Failed to create temporary data file: " .. filename)
-    return nil
-  end
-  
-  file:write(vim.json.encode(data))
-  file:close()
-  
-  return filename
+   local home = os.getenv("HOME")
+   local lnvim_dir = home .. "/.lnvim"
+
+   -- Ensure the .lnvim directory exists
+   os.execute("mkdir -p " .. lnvim_dir)
+
+   -- Create a unique filename using timestamp and random number
+   local filename = string.format("%s/curl_data_%d_%d.json", lnvim_dir, os.time(), math.random(100000))
+
+   -- Write the JSON data to the file
+   local file = io.open(filename, "w")
+   if not file then
+      error("Failed to create temporary data file: " .. filename)
+      return nil
+   end
+
+   file:write(vim.json.encode(data))
+   file:close()
+
+   return filename
 end
 
 local ROLES = {
@@ -326,7 +326,7 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
 
 
    if model.model_type == "anthropic" then
-      data.max_tokens = 5000
+      data.max_tokens = 16000
       -- For Anthropic with caching, messages[1] already contains the proper system format
       if model.model_id and state.prompt_cache.enabled_models[model.model_id] then
          -- System content is already properly formatted with cache_control
@@ -337,6 +337,13 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
          -- Regular Anthropic formatting without caching
          local system_message = table.remove(messages, 1)
          data.system = system_message.content
+      end
+      -- Add thinking/reasoning configuration if enabled
+      if state.use_reasoning then
+         data.thinking = {
+            type = "enabled",
+            budget_tokens = 16000
+         }
       end
 
       table.insert(args, "-H")
@@ -698,7 +705,7 @@ function M.call_llm(args, handler)
    local first_run = true
    -- vim.print("Full curl command: curl " .. table.concat(args, " "))
 
-   logger.dev_log("Curl command: curl " .. table.concat(args, " "), "CURL")
+   vim.print("Curl command: curl " .. table.concat(args, " "), "CURL")
    active_job = Job:new({
       command = "curl",
       args = args,
