@@ -326,7 +326,7 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
 
 
    if model.model_type == "anthropic" then
-      data.max_tokens = 16000
+      data.max_tokens = 4096
       -- For Anthropic with caching, messages[1] already contains the proper system format
       if model.model_id and state.prompt_cache.enabled_models[model.model_id] then
          -- System content is already properly formatted with cache_control
@@ -340,6 +340,8 @@ local function generate_args(model, system_prompt, prompt, messages, streaming)
       end
       -- Add thinking/reasoning configuration if enabled
       if state.use_reasoning then
+
+      data.max_tokens = 20000
          data.thinking = {
             type = "enabled",
             budget_tokens = 16000

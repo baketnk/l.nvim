@@ -11,39 +11,57 @@ M.replace_rules = {
 }
 
 M.config = {
-   show_diffs = true  -- Set to true by default, can be toggled
+   show_diffs = true,  -- Set to true by default, can be toggled
+   ignore_whitespace = true, -- Default value. Can be overridden per filetype
 }
 
-function M.generate_diff(original_lines, new_lines)
+-- Filetype specific configurations (overrides)
+M.filetype_config = {
+   python = {
+      ignore_whitespace = false, -- Whitespace is significant in Python
+   },
+   -- other filetypes can be configured here
+}
+
+function M.get_filetype_config(filetype)
+   return M.filetype_config[filetype] or {}
+end
+
+function M.generate_diff(original_lines, new_lines, ignore_whitespace)
    -- Create temporary files for the diff
    local temp_original = vim.fn.tempname()
    local temp_modified = vim.fn.tempname()
-   
+
    -- Write the content to the temporary files
    vim.fn.writefile(original_lines, temp_original)
    vim.fn.writefile(new_lines, temp_modified)
-   
+
    -- Use external diff command with unified format
-   local diff_cmd = "diff -u " .. vim.fn.shellescape(temp_original) .. " " .. vim.fn.shellescape(temp_modified)
+   local diff_cmd = "diff -u "
+   if ignore_whitespace then
+      diff_cmd = diff_cmd .. "-w " -- Add -w to ignore whitespace
+   end
+   diff_cmd = diff_cmd .. vim.fn.shellescape(temp_original) .. " " .. vim.fn.shellescape(temp_modified)
+
    local diff_output = vim.fn.system(diff_cmd)
-   
+
    -- Clean up temporary files
    vim.fn.delete(temp_original)
    vim.fn.delete(temp_modified)
-   
+
    -- If there's no difference, provide a message
    if diff_output == "" then
       return "No differences found."
    end
-   
+
    -- Process the diff output to replace temporary filenames with Original/Modified
    diff_output = diff_output:gsub("^%-%-%-[^\n]+", "--- Original")
    diff_output = diff_output:gsub("^%+%+%+[^\n]+", "+++ Modified", 1)
-   
+
    -- Add a summary of line counts
    local summary = "# Original line count: " .. #original_lines .. "\n"
                  .. "# Modified line count: " .. #new_lines .. "\n\n"
-   
+
    return summary .. diff_output
 end
 
@@ -54,7 +72,26 @@ function M.toggle_diff_preview()
     vim.notify("Diff preview " .. status, vim.log.levels.INFO)
 end
 
-function M.replace_with_codeblock()
+function M.replace_with_clipboard()
+   -- Get content from clipboard
+   local clipboard_content = vim.fn.getreg('+')
+   if not clipboard_content or clipboard_content == "" then
+      vim.notify("Clipboard is empty", vim.log.levels.ERROR)
+      return
+   end
+
+   -- Split content into lines
+   local lines = vim.split(clipboard_content, '\n')
+   if #lines == 0 then
+      vim.notify("No valid content in clipboard", vim.log.levels.ERROR)
+      return
+   end
+   
+   -- Call the original function with clipboard lines
+   M.replace_with_codeblock(lines)
+end
+
+function M.replace_with_codeblock(lines)
    local layout = require("lnvim.ui.layout").get_layout()
    local main_buffer = vim.api.nvim_win_get_buf(layout.main)
    local filetype = vim.bo[main_buffer].filetype
@@ -66,9 +103,12 @@ function M.replace_with_codeblock()
    end
 
    -- Get current codeblock content
-   local lines = editor.get_current_codeblock_contents(buffers.diff_buffer)
+   if not lines then
+      lines = editor.get_current_codeblock_contents(buffers.diff_buffer)
+   end
+   
    if not lines or #lines == 0 then
-      vim.notify("No codeblock selected", vim.log.levels.ERROR)
+      vim.notify("No content to process", vim.log.levels.ERROR)
       return
    end
 
@@ -88,42 +128,46 @@ function M.replace_with_codeblock()
          return
       end
       if M.config.show_diffs then
-   -- Get original content before replacement
-   local original_lines = vim.api.nvim_buf_get_lines(main_buffer, 0, -1, false)
+         -- Get original content before replacement
+         local original_lines = vim.api.nvim_buf_get_lines(main_buffer, 0, -1, false)
 
-   -- Create a temporary buffer to simulate the changes
-   local temp_buffer = vim.api.nvim_create_buf(false, true)
-   vim.api.nvim_buf_set_lines(temp_buffer, 0, -1, false, original_lines)
+         -- Create a temporary buffer to simulate the changes
+         local temp_buffer = vim.api.nvim_create_buf(false, true)
+         vim.api.nvim_buf_set_lines(temp_buffer, 0, -1, false, original_lines)
 
-   -- Apply the changes to the temporary buffer
-   handler.replace_symbols(temp_buffer, symbols, identifiers)
+         -- Apply the changes to the temporary buffer
+         handler.replace_symbols(temp_buffer, symbols, identifiers)
 
-   -- Get the modified content
-   local modified_lines = vim.api.nvim_buf_get_lines(temp_buffer, 0, -1, false)
+         -- Get the modified content
+         local modified_lines = vim.api.nvim_buf_get_lines(temp_buffer, 0, -1, false)
 
-   -- Clean up the temporary buffer
-   vim.api.nvim_buf_delete(temp_buffer, { force = true })
+         -- Clean up the temporary buffer
+         vim.api.nvim_buf_delete(temp_buffer, { force = true })
 
-   -- Generate diff and show confirmation dialog
-   local diff = M.generate_diff(original_lines, modified_lines)
+         -- Determine whether to ignore whitespace based on filetype config
+         local filetype_config = M.get_filetype_config(filetype)
+         local ignore_whitespace = filetype_config.ignore_whitespace or M.config.ignore_whitespace
 
-   modal.modal_confirm({
-      prompt = "Confirm symbol replacements?",
-      diff_content = diff
-   }, function(confirmed)
-      if confirmed then
-         -- Proceed with the actual replacement
+         -- Generate diff and show confirmation dialog
+         local diff = M.generate_diff(original_lines, modified_lines, ignore_whitespace)
+
+         modal.modal_confirm({
+            prompt = "Confirm symbol replacements?",
+            diff_content = diff
+         }, function(confirmed)
+            if confirmed then
+               -- Proceed with the actual replacement
+               handler.replace_symbols(main_buffer, symbols, identifiers)
+               vim.notify("Symbols replaced successfully", vim.log.levels.INFO)
+            else
+               vim.notify("Symbol replacement cancelled", vim.log.levels.INFO)
+            end
+         end)
+      else
+         -- Directly perform the replacement without confirmation
          handler.replace_symbols(main_buffer, symbols, identifiers)
          vim.notify("Symbols replaced successfully", vim.log.levels.INFO)
-      else
-         vim.notify("Symbol replacement cancelled", vim.log.levels.INFO)
       end
-   end)
-else
-   -- Directly perform the replacement without confirmation
-   handler.replace_symbols(main_buffer, symbols, identifiers)
-   vim.notify("Symbols replaced successfully", vim.log.levels.INFO)
-end
    end)
 end
 

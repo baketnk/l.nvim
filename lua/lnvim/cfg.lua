@@ -50,15 +50,15 @@ local function validate_model(model)
 end
 
 M.default_models = {
-    {
-      model_id = "claude-3-7-sonnet-latest",
+   {
+      model_id = "claude-3-5-sonnet-20241022",
       model_type = "anthropic",
       api_url = "https://api.anthropic.com/v1/messages",
       api_key = "ANTHROPIC_API_KEY",
       use_toolcalling = false,
    },
    {
-      model_id = "claude-3-5-sonnet-20241022",
+      model_id = "claude-3-7-sonnet-latest",
       model_type = "anthropic",
       api_url = "https://api.anthropic.com/v1/messages",
       api_key = "ANTHROPIC_API_KEY",
@@ -121,13 +121,14 @@ M.default_models = {
       api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-pro-exp-02-05:streamGenerateContent",
       use_toolcalling = false,
    },
-{
+   {
       model_id = "huggingface.co/NousResearch/DeepHermes-3-Llama-3-8B-Preview-GGUF:latest", -- TODO: use real ollama name
       model_type = "openaicompat",
       noauth = true,
       api_url = "http://localhost:11434/v1/chat/completions",
       use_toolcalling = false,
-      reasoning_prompt_override = "You are a deep thinking AI, you may use extremely long chains of thought to deeply consider the problem and deliberate with yourself via systematic reasoning processes to help come to a correct solution prior to answering. You should enclose your thoughts and internal monologue inside <think> </think> tags, and then provide your solution or response to the problem.",
+      reasoning_prompt_override =
+      "You are a deep thinking AI, you may use extremely long chains of thought to deeply consider the problem and deliberate with yourself via systematic reasoning processes to help come to a correct solution prior to answering. You should enclose your thoughts and internal monologue inside <think> </think> tags, and then provide your solution or response to the problem.",
    },
 }
 
@@ -273,7 +274,14 @@ function M.setup(_opts)
 
    M.make_plugKey("ReplaceFile", "n", "r", lcmd.replace_file_with_codeblock, { desc = "Replace file with code" })
    M.make_plugKey("SmartReplaceCodeblock", "n", "R", lcmd.smart_replace_with_codeblock,
-      { desc = "Smart replace code block" })
+      {  desc = "Smart replace code block" })
+   M.make_plugKey(
+      "ClipboardReplace",
+      "n",
+      "e", -- rb for "replace from clipboard"
+      require("lnvim.lsp_replace_rules").replace_with_clipboard,
+      { desc = "Replace symbols using clipboard content" }
+   )
    M.make_plugKey("SelectToPrompt", "x", "p", lcmd.selection_to_prompt, { desc = "copy selection to end of prompt" })
    M.make_plugKey(
       "SelectToPromptWrap",
@@ -364,13 +372,13 @@ function M.setup(_opts)
       { desc = "Toggle developer debug logging" }
    )
 
-M.make_plugKey(
-   "ToggleDiffPreview",
-   "n",
-   "ut", -- <Leader>;ut for "toggle diff preview"
-   require("lnvim.lsp_replace_rules").toggle_diff_preview,
-   { desc = "Toggle diff preview for replacements" }
-)
+   M.make_plugKey(
+      "ToggleDiffPreview",
+      "n",
+      "ut", -- <Leader>;ut for "toggle diff preview"
+      require("lnvim.lsp_replace_rules").toggle_diff_preview,
+      { desc = "Toggle diff preview for replacements" }
+   )
 
    M.make_plugKey(
       "DevOpenLogs",
@@ -399,23 +407,23 @@ M.make_plugKey(
       end,
       { desc = "Clear developer debug logs" }
    )
-M.make_plugKey(
-   "ToggleReasoning",
-   "n",
-   "ur", -- <Leader>;r
-   function()
-      state.use_reasoning = not state.use_reasoning
-      local status = state.use_reasoning and "enabled" or "disabled"
-      local model = state.current_model
-      local has_override = model and model.reasoning_prompt_override and true or false
-      local message = string.format("Reasoning mode %s%s", 
-         status,
-         state.use_reasoning and has_override and 
+   M.make_plugKey(
+      "ToggleReasoning",
+      "n",
+      "ur", -- <Leader>;r
+      function()
+         state.use_reasoning = not state.use_reasoning
+         local status = state.use_reasoning and "enabled" or "disabled"
+         local model = state.current_model
+         local has_override = model and model.reasoning_prompt_override and true or false
+         local message = string.format("Reasoning mode %s%s",
+            status,
+            state.use_reasoning and has_override and
             " (using custom prompt for " .. model.model_id .. ")" or "")
-      vim.notify(message, vim.log.levels.INFO)
-   end,
-   { desc = "Toggle reasoning mode" }
-)
+         vim.notify(message, vim.log.levels.INFO)
+      end,
+      { desc = "Toggle reasoning mode" }
+   )
 
    -- M.make_plugKey("GenerateReadme", "n", "R", lcmd.generate_readme, { desc = "Generate README.md" })
    if opts.open_drawer_on_setup then
