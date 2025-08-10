@@ -261,7 +261,7 @@ end
 local function generate_args(model, system_prompt, prompt, messages, streaming)
    local is_streaming = true
    if streaming ~= nil then
-      is_streaming = is_streaming
+      is_streaming = streaming
    end
    local args = {
       "-N",
@@ -903,8 +903,17 @@ end
 function M.focused_query(opts)
    local model = opts.model
    local callback = opts.on_complete
+
+   local file_contents = ""
+   if opts.files then
+      for _, file in ipairs(opts.files) do
+         local content = vim.fn.readfile(file)
+         file_contents = file_contents .. "\n\nNote Content:\n" .. table.concat(content, "\n")
+      end
+   end
+
    local messages = {
-      { role = "system", content = opts.system_prompt },
+      { role = "system", content = opts.system_prompt .. file_contents },
       { role = "user",   content = opts.prompt }
    }
 
