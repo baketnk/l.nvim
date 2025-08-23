@@ -3,9 +3,15 @@ local M = {}
 local cfg = require("lnvim.cfg")
 local state = require("lnvim.state")
 
+local setup_called = false
+
 -- local required_fields = { "model_id", "model_type", "api_url", "api_key" }
 function M.add_model(model)
-	table.insert(state.models, cfg.validate_model(model))
+	if not setup_called then
+		error("Call setup before calling add_model")
+	else
+		table.insert(state.models, cfg.validate_model(model))
+	end
 end
 
 function M.setup(_opts)
