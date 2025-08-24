@@ -143,6 +143,9 @@ function M.setup(_opts)
 	for _, model in ipairs(opts.models or M.default_models) do
 		table.insert(state.models, M.validate_model(model))
 	end
+	if opts.additional_models and opts.additional_models.model_id then
+		opts.additional_models = { opts.additional_models }
+	end
 	for _, model in ipairs(opts.additional_models or {}) do
 		table.insert(state.models, M.validate_model(model))
 	end
