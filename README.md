@@ -1,3 +1,5 @@
+
+
 ```
     ╭──────────────╮
     │  ⚜ l.nvim ⚜  │
@@ -17,6 +19,7 @@ Stability warning: Development is currently when I feel like it. I try not to br
 - Add files from your repo into your chat automatically.
 - Built-in project-level chat logging, system prompt.
 - LSP aware replacement. select the chat codeblock, activate the binding, choose where to replace functions in your file.
+- Execute predefined multi-step AI workflows using Chains.
 
 (Read the entire README for details, there's a lot of stuff in here)
 
@@ -199,4 +202,4 @@ Contributions are welcome, feel free to submit issues or PRs.
 ## License
 
 MIT
-
+```
